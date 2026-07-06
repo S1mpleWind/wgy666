@@ -5,6 +5,11 @@ import './App.css'
 import { syncRepository } from './api'
 import type { CategorySummary, RepositorySnapshot } from './api'
 
+/**
+ * App — Single-page sync-and-dashboard application.
+ */
+ */
+
 const defaultForm = {
   url: 'https://github.com/fastapi/fastapi',
   max_issues: 30,
@@ -18,6 +23,8 @@ function App() {
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // -- Sync form handler --------------------------------------------------
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -34,6 +41,7 @@ function App() {
     }
   }
 
+  // Derive top 5 languages from the language byte-count map.
   const topLanguages = useMemo(() => {
     if (!snapshot) return []
     return Object.entries(snapshot.stats.languages)
@@ -43,6 +51,7 @@ function App() {
 
   return (
     <main className="workspace">
+      {/* -- Sidebar: sync form + module info ------------------------------- */}
       <aside className="sidebar">
         <div className="brand">
           <FolderGit size={28} aria-hidden="true" />
@@ -93,11 +102,13 @@ function App() {
         </section>
       </aside>
 
+      {/* -- Main content: dashboard --------------------------------------- */}
       <section className="content">
         {!snapshot ? (
           <EmptyState isLoading={isLoading} />
         ) : (
           <>
+            {/* Repository header */}
             <header className="repo-header">
               <div>
                 <p className="eyebrow">Synced {formatDate(snapshot.synced_at)}</p>
@@ -115,6 +126,7 @@ function App() {
               </a>
             </header>
 
+            {/* Metric cards */}
             <section className="metric-grid">
               <Metric icon={<Star size={18} />} label="Stars" value={snapshot.stats.stars.toLocaleString()} />
               <Metric icon={<GitBranch size={18} />} label="Forks" value={snapshot.stats.forks.toLocaleString()} />
@@ -122,6 +134,7 @@ function App() {
               <Metric icon={<Search size={18} />} label="Indexed Files" value={snapshot.files.length.toLocaleString()} />
             </section>
 
+            {/* Classification breakdowns */}
             <section className="two-column">
               <Panel title="Issue 分类">
                 <CategoryBars summaries={snapshot.issue_categories} total={snapshot.issues.length} />
@@ -131,6 +144,7 @@ function App() {
               </Panel>
             </section>
 
+            {/* Language distribution + README */}
             <section className="two-column">
               <Panel title="语言分布">
                 <CategoryBars summaries={topLanguages.map(([category, count]) => ({ category, count }))} total={topLanguages.reduce((sum, [, count]) => sum + count, 0)} />
@@ -140,6 +154,7 @@ function App() {
               </Panel>
             </section>
 
+            {/* Issue list */}
             <Panel title="Issues">
               <div className="table">
                 {snapshot.issues.slice(0, 12).map((issue) => (
@@ -153,6 +168,7 @@ function App() {
               </div>
             </Panel>
 
+            {/* Recent PRs and commits */}
             <section className="two-column">
               <Panel title="近期 PR">
                 <CompactList
@@ -176,6 +192,7 @@ function App() {
               </Panel>
             </section>
 
+            {/* File sample */}
             <Panel title="文件样本">
               <div className="file-list">
                 {snapshot.files.slice(0, 24).map((file) => (
@@ -192,6 +209,8 @@ function App() {
     </main>
   )
 }
+
+// -- Shared UI components --------------------------------------------------
 
 type NumberFieldProps = {
   label: string
@@ -285,6 +304,8 @@ function CompactList({ items }: { items: { key: string | number; title: string; 
     </div>
   )
 }
+
+// -- Formatting helpers ----------------------------------------------------
 
 function formatCategory(category: string) {
   return category.replaceAll('_', ' ')

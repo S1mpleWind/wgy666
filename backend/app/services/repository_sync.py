@@ -1,3 +1,9 @@
+"""Orchestrates the end-to-end repository sync workflow.
+
+Fetches data from GitHub → classifies files → classifies issues →
+assembles a ``RepositorySnapshot``.
+"""
+
 from datetime import datetime, timezone
 from typing import Any
 
@@ -17,11 +23,21 @@ from app.services.repository_url import parse_github_repository_url
 
 
 class RepositorySyncService:
+    """Coordinate GitHub data fetching → file/issue classification → snapshot creation."""
+
     def __init__(self) -> None:
         self.file_classifier = FileClassifier()
         self.issue_classifier = IssueClassifier()
 
     async def sync(self, request: SyncRepositoryRequest) -> RepositorySnapshot:
+        """Execute a full repository sync and return the resulting snapshot.
+
+        Steps:
+        1. Parse the GitHub URL.
+        2. Fetch repo metadata, languages, README, tree, issues, PRs, commits.
+        3. Classify files and issues.
+        4. Assemble and return the snapshot.
+        """
         ref = parse_github_repository_url(request.url)
         async with GitHubClient() as client:
             repository = await client.get_repository(ref)
@@ -68,7 +84,10 @@ class RepositorySyncService:
             synced_at=datetime.now(timezone.utc),
         )
 
+    # -- Mapping helpers (GitHub API → Pydantic models) --------------------
+
     def _map_issue(self, payload: dict[str, Any]) -> GitHubIssue:
+        """Map a GitHub API issue object to our ``GitHubIssue`` model."""
         labels = [label["name"] for label in payload.get("labels", []) if "name" in label]
         classification = self.issue_classifier.classify(
             title=payload.get("title") or "",
@@ -89,6 +108,7 @@ class RepositorySyncService:
         )
 
     def _map_pull_request(self, payload: dict[str, Any]) -> PullRequestSummary:
+        """Map a GitHub API PR object to our ``PullRequestSummary`` model."""
         return PullRequestSummary(
             number=payload["number"],
             title=payload.get("title") or "",
@@ -100,6 +120,7 @@ class RepositorySyncService:
         )
 
     def _map_commit(self, payload: dict[str, Any]) -> CommitSummary:
+        """Map a GitHub API commit object to our ``CommitSummary`` model."""
         commit = payload.get("commit") or {}
         author = commit.get("author") or {}
         return CommitSummary(
@@ -112,6 +133,7 @@ class RepositorySyncService:
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
+    """Parse an ISO-8601 datetime string, handling the trailing 'Z'."""
     if not value:
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00"))

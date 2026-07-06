@@ -1,3 +1,9 @@
+"""Pydantic models for repository data, sync requests, and file classification.
+
+These models define the API contract shared between the backend and frontend.
+Always update ``frontend/src/api.ts`` when changing a model here.
+"""
+
 from datetime import datetime
 from enum import StrEnum
 
@@ -7,6 +13,8 @@ from app.schemas.issue import GitHubIssue
 
 
 class FileCategory(StrEnum):
+    """High-level file type categories used by the rule classifier."""
+
     SOURCE = "source_code"
     TEST = "tests"
     DOCUMENTATION = "documentation"
@@ -20,6 +28,8 @@ class FileCategory(StrEnum):
 
 
 class SyncRepositoryRequest(BaseModel):
+    """Request body for ``POST /api/repositories/sync``."""
+
     url: str = Field(
         min_length=1,
         examples=["https://github.com/fastapi/fastapi"],
@@ -31,6 +41,8 @@ class SyncRepositoryRequest(BaseModel):
 
 
 class RepositoryIdentity(BaseModel):
+    """Basic repository identification and URL."""
+
     owner: str
     name: str
     full_name: str
@@ -39,6 +51,8 @@ class RepositoryIdentity(BaseModel):
 
 
 class RepositoryStats(BaseModel):
+    """Aggregated repository statistics from GitHub."""
+
     stars: int = 0
     forks: int = 0
     watchers: int = 0
@@ -49,17 +63,23 @@ class RepositoryStats(BaseModel):
 
 
 class ClassifiedFile(BaseModel):
+    """A file in the repository tree with its assigned category."""
+
     path: str
     category: FileCategory
     size: int | None = None
 
 
 class CategorySummary(BaseModel):
+    """Aggregated count for a category (used for bar charts)."""
+
     category: str
     count: int
 
 
 class PullRequestSummary(BaseModel):
+    """Minimal pull request information."""
+
     number: int
     title: str
     state: str
@@ -70,6 +90,8 @@ class PullRequestSummary(BaseModel):
 
 
 class CommitSummary(BaseModel):
+    """Minimal commit information."""
+
     sha: str
     message: str
     author: str | None = None
@@ -78,6 +100,12 @@ class CommitSummary(BaseModel):
 
 
 class RepositorySnapshot(BaseModel):
+    """Complete snapshot of a synced repository.
+
+    This is the primary data structure returned by the sync endpoint and
+    cached in the storage layer.
+    """
+
     identity: RepositoryIdentity
     description: str | None = None
     stats: RepositoryStats
@@ -93,6 +121,8 @@ class RepositorySnapshot(BaseModel):
 
 
 class RepositoryListItem(BaseModel):
+    """Lightweight item for the repository listing endpoint."""
+
     owner: str
     name: str
     full_name: str

@@ -1,8 +1,16 @@
+"""Rule-based file classifier.
+
+Categorizes repository files into types (SOURCE, TEST, DOCS, CONFIG, etc.)
+based on file path patterns and extensions.
+"""
+
 from collections import Counter
 from pathlib import PurePosixPath
 
 from app.schemas.repository import CategorySummary, ClassifiedFile, FileCategory
 
+
+# -- Rule sets (extend these to cover more ecosystem patterns) -------------
 
 DOC_EXTENSIONS = {".md", ".rst", ".txt", ".adoc"}
 SOURCE_EXTENSIONS = {
@@ -59,7 +67,14 @@ CONFIG_FILES = {
 
 
 class FileClassifier:
+    """Classify a file path into a ``FileCategory`` using rule matching."""
+
     def classify(self, path: str) -> FileCategory:
+        """Determine the category of a single file by its path.
+
+        Rules are ordered from most specific to most general:
+        CI/CD → TEST → DOCS → DEPENDENCY → CONFIG → BUILD → ASSET → SOURCE → DATA → OTHER.
+        """
         normalized = path.replace("\\", "/").lower()
         parts = set(normalized.split("/"))
         file_name = PurePosixPath(normalized).name
@@ -86,6 +101,7 @@ class FileClassifier:
         return FileCategory.OTHER
 
     def classify_many(self, tree_items: list[dict], limit: int) -> tuple[list[ClassifiedFile], list[CategorySummary]]:
+        """Classify all blob items in a git tree, up to ``limit`` items."""
         files: list[ClassifiedFile] = []
         counter: Counter[str] = Counter()
 

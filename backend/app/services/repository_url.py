@@ -1,14 +1,28 @@
+"""GitHub repository URL parser.
+
+Supports HTTPS URLs, git@ SSH URLs, and bare ``owner/name`` strings.
+"""
+
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
 
 @dataclass(frozen=True)
 class RepositoryRef:
+    """Parsed repository reference with owner and name components."""
+
     owner: str
     name: str
 
 
 def parse_github_repository_url(value: str) -> RepositoryRef:
+    """Parse a GitHub repository URL or identifier into ``RepositoryRef``.
+
+    Accepts:
+    - ``https://github.com/owner/name``
+    - ``git@github.com:owner/name.git``
+    - ``owner/name`` (bare format)
+    """
     candidate = value.strip()
     if candidate.startswith("git@github.com:"):
         path = candidate.removeprefix("git@github.com:")

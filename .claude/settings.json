@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv add *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'docs: add module docstrings and inline comments across codebase *)"
+    ]
+  }
+}

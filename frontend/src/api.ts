@@ -1,4 +1,13 @@
+/**
+ * API client and TypeScript type definitions.
+ *
+ * These types mirror the backend Pydantic schemas in ``backend/app/schemas/``.
+ * Keep them in sync when making changes on either side.
+ */
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+
+// -- Types (mirrors backend/app/schemas/) ---------------------------------
 
 export type CategorySummary = {
   category: string
@@ -85,6 +94,9 @@ export type SyncRepositoryPayload = {
   max_tree_items: number
 }
 
+// -- API calls -------------------------------------------------------------
+
+/** Trigger a full repository sync: fetch → classify → cache. */
 export async function syncRepository(payload: SyncRepositoryPayload): Promise<RepositorySnapshot> {
   const response = await fetch(`${API_BASE_URL}/api/repositories/sync`, {
     method: 'POST',
@@ -101,3 +113,4 @@ export async function syncRepository(payload: SyncRepositoryPayload): Promise<Re
 
   return response.json()
 }
+
