@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { AlertCircle, FolderGit, GitBranch, Loader2, RefreshCw, Search, Star } from 'lucide-react'
+import { AlertCircle, Boxes, FileCode2, FileText, FolderGit, GitBranch, Loader2, Package, RefreshCw, Search, Settings2, Star, TestTube2 } from 'lucide-react'
 import './App.css'
 import { syncRepository } from './api'
-import type { CategorySummary, RepositorySnapshot } from './api'
+import type { CategorySummary, ClassifiedFile, RepositorySnapshot } from './api'
 
 /**
  * App — Single-page sync-and-dashboard application.
- */
  */
 
 const defaultForm = {
@@ -47,6 +46,11 @@ function App() {
     return Object.entries(snapshot.stats.languages)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
+  }, [snapshot])
+
+  const projectAnalysis = useMemo(() => {
+    if (!snapshot) return null
+    return analyzeProject(snapshot)
   }, [snapshot])
 
   return (
@@ -154,6 +158,13 @@ function App() {
               </Panel>
             </section>
 
+            {projectAnalysis && (
+              <ProjectAnalysisPanel
+                analysis={projectAnalysis}
+                repositoryName={snapshot.identity.name}
+              />
+            )}
+
             {/* Issue list */}
             <Panel title="Issues">
               <div className="table">
@@ -211,6 +222,118 @@ function App() {
 }
 
 // -- Shared UI components --------------------------------------------------
+
+type ProjectDirectory = {
+  name: string
+  count: number
+  mainCategory: string
+}
+
+type ProjectAnalysis = {
+  projectType: string
+  sourceCount: number
+  dependencyFiles: ClassifiedFile[]
+  testFiles: ClassifiedFile[]
+  docFiles: ClassifiedFile[]
+  configFiles: ClassifiedFile[]
+  entryFiles: ClassifiedFile[]
+  ciFiles: ClassifiedFile[]
+  topDirectories: ProjectDirectory[]
+}
+
+function ProjectAnalysisPanel({ analysis, repositoryName }: { analysis: ProjectAnalysis; repositoryName: string }) {
+  return (
+    <Panel title="项目解析原型">
+      <div className="analysis-layout">
+        <div className="analysis-summary">
+          <p className="analysis-kicker">规则解析 · 非 AI</p>
+          <h4>{analysis.projectType}</h4>
+          <p>
+            基于 GitHub 同步到的目录树、文件类型、依赖文件和 README 信息生成项目结构视图，
+            用于界面原型阶段说明“系统如何帮助开发者理解仓库”。
+          </p>
+          <div className="analysis-chips">
+            <span>{analysis.sourceCount} 个源码文件</span>
+            <span>{analysis.dependencyFiles.length} 个依赖文件</span>
+            <span>{analysis.testFiles.length} 个测试文件</span>
+            <span>{analysis.docFiles.length} 个文档文件</span>
+          </div>
+        </div>
+
+        <div className="mindmap" aria-label="项目架构思维导图">
+          <div className="mindmap-center">
+            <strong>{repositoryName}</strong>
+            <span>项目结构</span>
+          </div>
+          <MindmapNode label="源码模块" value={analysis.sourceCount} icon={<FileCode2 size={16} />} />
+          <MindmapNode label="依赖配置" value={analysis.dependencyFiles.length + analysis.configFiles.length} icon={<Package size={16} />} />
+          <MindmapNode label="测试" value={analysis.testFiles.length} icon={<TestTube2 size={16} />} />
+          <MindmapNode label="文档" value={analysis.docFiles.length} icon={<FileText size={16} />} />
+          <MindmapNode label="CI/CD" value={analysis.ciFiles.length} icon={<Settings2 size={16} />} />
+        </div>
+      </div>
+
+      <div className="analysis-grid">
+        <AnalysisCard
+          icon={<Boxes size={18} />}
+          title="主要目录"
+          items={analysis.topDirectories.map((item) => `${item.name} · ${item.count} 个文件 · ${formatCategory(item.mainCategory)}`)}
+        />
+        <AnalysisCard
+          icon={<Package size={18} />}
+          title="依赖文件"
+          items={analysis.dependencyFiles.slice(0, 6).map((file) => file.path)}
+          emptyText="暂未识别到依赖文件"
+        />
+        <AnalysisCard
+          icon={<FileCode2 size={18} />}
+          title="入口文件候选"
+          items={analysis.entryFiles.slice(0, 6).map((file) => file.path)}
+          emptyText="暂未识别到明显入口文件"
+        />
+        <AnalysisCard
+          icon={<TestTube2 size={18} />}
+          title="测试与文档"
+          items={[
+            `测试文件：${analysis.testFiles.length} 个`,
+            `文档文件：${analysis.docFiles.length} 个`,
+            `配置文件：${analysis.configFiles.length} 个`,
+          ]}
+        />
+      </div>
+    </Panel>
+  )
+}
+
+function MindmapNode({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
+  return (
+    <div className="mindmap-node">
+      {icon}
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  )
+}
+
+function AnalysisCard({ icon, title, items, emptyText = '暂无数据' }: { icon: ReactNode; title: string; items: string[]; emptyText?: string }) {
+  return (
+    <article className="analysis-card">
+      <h4>
+        {icon}
+        {title}
+      </h4>
+      {items.length === 0 ? (
+        <p className="muted">{emptyText}</p>
+      ) : (
+        <ul>
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
+    </article>
+  )
+}
 
 type NumberFieldProps = {
   label: string
@@ -316,6 +439,79 @@ function formatDate(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
+}
+
+function analyzeProject(snapshot: RepositorySnapshot): ProjectAnalysis {
+  const files = snapshot.files
+  const categoryMap = new Map(snapshot.file_categories.map((item) => [item.category, item.count]))
+  const directoryCounter = new Map<string, { count: number; categories: Map<string, number> }>()
+
+  for (const file of files) {
+    const directory = file.path.includes('/') ? file.path.split('/')[0] : '(root)'
+    const current = directoryCounter.get(directory) ?? { count: 0, categories: new Map<string, number>() }
+    current.count += 1
+    current.categories.set(file.category, (current.categories.get(file.category) ?? 0) + 1)
+    directoryCounter.set(directory, current)
+  }
+
+  const topDirectories = Array.from(directoryCounter.entries())
+    .map(([name, value]) => {
+      const mainCategory = Array.from(value.categories.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'other'
+      return { name, count: value.count, mainCategory }
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8)
+
+  const dependencyFiles = files.filter((file) => file.category === 'dependency')
+  const testFiles = files.filter((file) => file.category === 'tests')
+  const docFiles = files.filter((file) => file.category === 'documentation')
+  const configFiles = files.filter((file) => file.category === 'configuration')
+  const ciFiles = files.filter((file) => file.category === 'ci_cd')
+  const entryFiles = files.filter((file) => isEntryCandidate(file.path))
+
+  return {
+    projectType: inferProjectType(snapshot),
+    sourceCount: categoryMap.get('source_code') ?? 0,
+    dependencyFiles,
+    testFiles,
+    docFiles,
+    configFiles,
+    entryFiles,
+    ciFiles,
+    topDirectories,
+  }
+}
+
+function inferProjectType(snapshot: RepositorySnapshot) {
+  const languages = Object.keys(snapshot.stats.languages).map((language) => language.toLowerCase())
+  const hasPython = languages.includes('python')
+  const hasFrontend = languages.some((language) => ['typescript', 'javascript', 'tsx', 'vue', 'css', 'html'].includes(language))
+
+  if (hasPython && hasFrontend) return '全栈项目：Python 后端 + Web 前端'
+  if (hasPython) return 'Python 后端或工具库项目'
+  if (hasFrontend) return 'Web 前端或 Node.js 项目'
+  if (languages.length > 0) return `${Object.keys(snapshot.stats.languages)[0]} 为主的项目`
+  return '暂未识别主要技术栈'
+}
+
+function isEntryCandidate(path: string) {
+  const normalized = path.toLowerCase()
+  const fileName = normalized.split('/').at(-1)
+  return Boolean(
+    fileName &&
+    [
+      'main.py',
+      'app.py',
+      'server.py',
+      'manage.py',
+      'index.js',
+      'index.ts',
+      'main.ts',
+      'main.tsx',
+      'app.tsx',
+      'program.cs',
+    ].includes(fileName)
+  )
 }
 
 export default App
