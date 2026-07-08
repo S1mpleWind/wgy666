@@ -94,6 +94,42 @@ export type SyncRepositoryPayload = {
   max_tree_items: number
 }
 
+export type FreshnessMode = 'cache_first' | 'refresh_if_stale' | 'force_refresh'
+
+export type AssistantChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type AssistantToolCall = {
+  name: string
+  args: Record<string, unknown>
+  summary: string
+}
+
+export type AssistantCitation = {
+  type: string
+  label: string
+  url: string | null
+  path: string | null
+}
+
+export type AssistantChatRequest = {
+  owner: string
+  name: string
+  message: string
+  freshness?: FreshnessMode
+  history?: AssistantChatMessage[]
+}
+
+export type AssistantChatResponse = {
+  answer: string
+  repository: string
+  used_cached_data: boolean
+  tool_calls: AssistantToolCall[]
+  citations: AssistantCitation[]
+}
+
 // -- API calls -------------------------------------------------------------
 
 /** Trigger a full repository sync: fetch → classify → cache. */
@@ -104,6 +140,28 @@ export async function syncRepository(payload: SyncRepositoryPayload): Promise<Re
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Request failed with ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/** Ask the repository assistant a question. */
+export async function askAssistant(payload: AssistantChatRequest): Promise<AssistantChatResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/assistant/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      freshness: 'refresh_if_stale',
+      history: [],
+      ...payload,
+    }),
   })
 
   if (!response.ok) {

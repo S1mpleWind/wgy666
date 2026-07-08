@@ -27,6 +27,24 @@ class Settings(BaseSettings):
                     "Set to a random string in production; leave empty in dev to skip verification.",
     )
 
+    # --- LLM / OpenAI-compatible chat completions ---
+    llm_api_base_url: str = Field(
+        default="https://models.sjtu.edu.cn/api/v1",
+        validation_alias="LLM_API_BASE_URL",
+        description="OpenAI-compatible API base URL.",
+    )
+    llm_api_key: str | None = Field(
+        default=None,
+        validation_alias="LLM_API_KEY",
+        description="OpenAI-compatible API key. Never commit real keys.",
+    )
+    llm_model: str = Field(
+        default="deepseek-reasoner",
+        validation_alias="LLM_MODEL",
+        description="Model name for assistant answer synthesis.",
+    )
+    llm_timeout_seconds: float = Field(default=60.0, validation_alias="LLM_TIMEOUT_SECONDS")
+
     # --- CORS ---
     cors_origins: list[str] = [
         "http://localhost:5173",

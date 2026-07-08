@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { AlertCircle, Boxes, FileCode2, FileText, FolderGit, GitBranch, Loader2, Package, RefreshCw, Search, Settings2, Star, TestTube2 } from 'lucide-react'
+import { AlertCircle, Bot, Boxes, FileCode2, FileText, FolderGit, GitBranch, Loader2, Package, RefreshCw, Search, Send, Settings2, Star, TestTube2, UserRound } from 'lucide-react'
 import './App.css'
-import { syncRepository } from './api'
-import type { CategorySummary, ClassifiedFile, RepositorySnapshot } from './api'
+import { askAssistant, syncRepository } from './api'
+import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, RepositorySnapshot } from './api'
 
 /**
  * App — Single-page sync-and-dashboard application.
@@ -217,6 +217,7 @@ function App() {
           </>
         )}
       </section>
+      <ChatSidebar snapshot={snapshot} />
     </main>
   )
 }
@@ -332,6 +333,147 @@ function AnalysisCard({ icon, title, items, emptyText = '暂无数据' }: { icon
         </ul>
       )}
     </article>
+  )
+}
+
+type ChatThreadMessage = AssistantChatMessage & {
+  toolCalls?: AssistantChatResponse['tool_calls']
+  citations?: AssistantChatResponse['citations']
+  usedCachedData?: boolean
+}
+
+function ChatSidebar({ snapshot }: { snapshot: RepositorySnapshot | null }) {
+  const [messages, setMessages] = useState<ChatThreadMessage[]>([
+    {
+      role: 'assistant',
+      content: '同步仓库后，可以问我项目结构、Issue、测试文件、依赖、README 或最近活动。',
+    },
+  ])
+  const [input, setInput] = useState('')
+  const [isAsking, setIsAsking] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
+
+  async function handleAsk(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!snapshot || !input.trim() || isAsking) return
+
+    const question = input.trim()
+    const history = messages
+      .filter((message) => message.role === 'user' || message.role === 'assistant')
+      .slice(-8)
+      .map(({ role, content }) => ({ role, content }))
+
+    const userMessage: ChatThreadMessage = { role: 'user', content: question }
+    setMessages((current) => [...current, userMessage])
+    setInput('')
+    setIsAsking(true)
+    setChatError(null)
+
+    try {
+      const response = await askAssistant({
+        owner: snapshot.identity.owner,
+        name: snapshot.identity.name,
+        message: question,
+        freshness: 'refresh_if_stale',
+        history,
+      })
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: response.answer,
+          toolCalls: response.tool_calls,
+          citations: response.citations,
+          usedCachedData: response.used_cached_data,
+        },
+      ])
+    } catch (exc) {
+      setChatError(exc instanceof Error ? exc.message : '问答失败')
+    } finally {
+      setIsAsking(false)
+    }
+  }
+
+  return (
+    <aside className="chat-sidebar">
+      <header className="chat-header">
+        <div>
+          <Bot size={22} aria-hidden="true" />
+          <div>
+            <h2>Repository Agent</h2>
+            <p>{snapshot ? snapshot.identity.full_name : '等待仓库上下文'}</p>
+          </div>
+        </div>
+      </header>
+
+      <div className="chat-thread">
+        {messages.map((message, index) => (
+          <article className={`chat-message ${message.role}`} key={`${message.role}-${index}`}>
+            <div className="chat-avatar">
+              {message.role === 'assistant' ? <Bot size={16} aria-hidden="true" /> : <UserRound size={16} aria-hidden="true" />}
+            </div>
+            <div className="chat-bubble">
+              <p>{message.content}</p>
+              {message.toolCalls && message.toolCalls.length > 0 && (
+                <div className="tool-strip">
+                  {message.toolCalls.map((tool) => (
+                    <span key={`${index}-${tool.name}`}>{tool.name}</span>
+                  ))}
+                </div>
+              )}
+              {message.citations && message.citations.length > 0 && (
+                <div className="citation-list">
+                  {message.citations.slice(0, 5).map((citation) => (
+                    citation.url ? (
+                      <a href={citation.url} target="_blank" key={`${citation.type}-${citation.label}`}>
+                        {citation.type}: {citation.label}
+                      </a>
+                    ) : (
+                      <span key={`${citation.type}-${citation.label}`}>
+                        {citation.type}: {citation.label}
+                      </span>
+                    )
+                  ))}
+                </div>
+              )}
+              {typeof message.usedCachedData === 'boolean' && (
+                <span className="cache-note">{message.usedCachedData ? 'cache used' : 'synced before answer'}</span>
+              )}
+            </div>
+          </article>
+        ))}
+        {isAsking && (
+          <article className="chat-message assistant">
+            <div className="chat-avatar">
+              <Bot size={16} aria-hidden="true" />
+            </div>
+            <div className="chat-bubble loading">
+              <Loader2 className="spin" size={16} aria-hidden="true" />
+              正在调用仓库工具...
+            </div>
+          </article>
+        )}
+      </div>
+
+      {chatError && (
+        <div className="notice error chat-error">
+          <AlertCircle size={16} aria-hidden="true" />
+          <span>{chatError}</span>
+        </div>
+      )}
+
+      <form className="chat-form" onSubmit={handleAsk}>
+        <input
+          disabled={!snapshot || isAsking}
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder={snapshot ? '问：这个项目测试在哪？' : '请先同步仓库'}
+        />
+        <button disabled={!snapshot || isAsking || !input.trim()} type="submit" aria-label="发送问题">
+          <Send size={17} aria-hidden="true" />
+        </button>
+      </form>
+    </aside>
   )
 }
 
