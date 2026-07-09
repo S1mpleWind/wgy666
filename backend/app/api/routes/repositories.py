@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from app.schemas.repository import RepositoryListItem, RepositorySnapshot, SyncRepositoryRequest
 from app.services.github_client import GitHubClientError
 from app.services.repository_sync import RepositorySyncService
-from app.storage.memory import repository_store
+from app.storage import repository_store
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 

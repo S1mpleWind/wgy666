@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from app.schemas.issue import IssueCategory, IssueClassification
 from app.schemas.repository import CategorySummary, GitHubIssue
 from app.services.issue_classifier import IssueClassifier
-from app.storage.memory import repository_store
+from app.storage import repository_store
 
 
 # ---------------------------------------------------------------------------
