@@ -18,7 +18,7 @@ from app.schemas.repository import (
     RepositorySnapshot,
     RepositoryStats,
 )
-from app.storage.memory import repository_store
+from app.storage import repository_store
 
 
 def _save_sample_snapshot() -> None:
