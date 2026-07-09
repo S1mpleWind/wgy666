@@ -79,6 +79,5 @@ GITHUB_WEBHOOK_SECRET=your_secret uv run uvicorn app.main:app --port 8000
 | `backend/app/core/config.py` | 新增 `github_webhook_secret` 配置项 |
 | `backend/app/main.py` | 注册 webhooks 路由 |
 | `backend/.env.example` | 新增 `GITHUB_WEBHOOK_SECRET=` |
-| `backend/pyproject.toml` | 新增 pytest 配置 + 开发依赖 |
+| `backend/pyproject.toml` | 新增 pytest 配置 + 开发依赖 
 
-## Vibe
