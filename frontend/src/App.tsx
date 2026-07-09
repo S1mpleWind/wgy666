@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { AlertCircle, Bot, Boxes, FileCode2, FileText, FolderGit, GitBranch, Loader2, Package, RefreshCw, Search, Send, Settings2, Star, TestTube2, UserRound } from 'lucide-react'
+import { AlertCircle, Bell, Bot, Boxes, FileCode2, FileText, FolderGit, GitBranch, Loader2, Package, RefreshCw, Search, Send, Settings2, Star, TestTube2, UserRound } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './App.css'
-import { askAssistant, syncRepository } from './api'
-import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, RepositorySnapshot } from './api'
+import { askAssistant, fetchWebhookEvents, syncRepository } from './api'
+import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, RepositorySnapshot, WebhookEventItem } from './api'
 
 /**
  * App — Single-page sync-and-dashboard application.
@@ -24,6 +24,30 @@ function App() {
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showInbox, setShowInbox] = useState(false)
+  const [webhookEvents, setWebhookEvents] = useState<WebhookEventItem[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+
+  // -- Notification inbox --------------------------------------------------
+
+  const loadEvents = useCallback(async () => {
+    setEventsLoading(true)
+    try {
+      const events = await fetchWebhookEvents(20)
+      setWebhookEvents(events)
+    } catch {
+      // silently fail — inbox just stays empty
+    } finally {
+      setEventsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (showInbox) {
+      loadEvents()
+    }
+  }, [showInbox, loadEvents])
 
   // -- Sync form handler --------------------------------------------------
 
@@ -89,6 +113,69 @@ function App() {
             同步仓库
           </button>
         </form>
+
+        <div className="sidebar-actions">
+          <button className={`ghost-button sidebar-action ${showInbox ? 'active' : ''}`} onClick={() => setShowInbox(!showInbox)}>
+            <Bell size={16} aria-hidden="true" />
+            通知
+            {webhookEvents.length > 0 && <span className="badge-count">{webhookEvents.length}</span>}
+          </button>
+          <button className={`ghost-button sidebar-action ${showSettings ? 'active' : ''}`} onClick={() => setShowSettings(!showSettings)}>
+            <Settings2 size={16} aria-hidden="true" />
+            配置
+          </button>
+        </div>
+
+        {showInbox && (
+          <section className="inbox-panel">
+            <h3>通知</h3>
+            {eventsLoading ? (
+              <p className="muted inbox-empty">加载中...</p>
+            ) : webhookEvents.length === 0 ? (
+              <p className="muted inbox-empty">暂无通知</p>
+            ) : (
+              <div className="inbox-list">
+                {webhookEvents.map((event) => (
+                  <div className="inbox-item" key={event.event_id}>
+                    <div className="inbox-item-header">
+                      <span className={`badge ${event.classification?.category ?? ''}`}>
+                        {formatCategory(event.classification?.category ?? 'unknown')}
+                      </span>
+                      <span className="inbox-time">{formatTimeAgo(event.received_at)}</span>
+                    </div>
+                    <a
+                      href={`https://github.com/${event.repository}/issues/${event.issue_number}`}
+                      target="_blank"
+                      className="inbox-item-title"
+                    >
+                      {event.repository}#{event.issue_number}
+                    </a>
+                    {event.classification?.reason && (
+                      <p className="inbox-item-reason">{event.classification.reason}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {showSettings && (
+          <section className="settings-panel">
+            <h3>Webhook 配置</h3>
+            <label>
+              Webhook URL
+              <input value="http://85.211.226.195:8000/api/webhooks/github" readOnly disabled />
+            </label>
+            <label>
+              GitHub Webhook Secret
+              <input value="issuescope_webhook_secret_2024" readOnly disabled />
+            </label>
+            <p className="settings-hint">
+              在 GitHub 仓库 Settings → Webhooks 中填入以上 URL 和 Secret 以启用自动监听。
+            </p>
+          </section>
+        )}
 
         {error && (
           <div className="notice error">
@@ -587,6 +674,17 @@ function formatDate(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
+}
+
+function formatTimeAgo(value: string) {
+  const diff = Date.now() - new Date(value).getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+  const days = Math.floor(hours / 24)
+  return `${days} 天前`
 }
 
 function analyzeProject(snapshot: RepositorySnapshot): ProjectAnalysis {

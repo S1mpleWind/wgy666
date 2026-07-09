@@ -883,3 +883,158 @@ button,
     justify-self: start;
   }
 }
+
+/* -- Settings panel ------------------------------------------------------- */
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  width: 100%;
+  cursor: pointer;
+}
+
+.settings-panel {
+  background: #f6f8fa;
+  border: 1px solid #d9e0e6;
+  border-radius: 8px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.settings-panel h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #182027;
+}
+
+.settings-panel input:disabled {
+  background: #eef2f6;
+  color: #43505c;
+  cursor: text;
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #6a747e;
+  line-height: 1.5;
+}
+
+/* -- Sidebar actions (notifications, settings) --------------------------- */
+
+.sidebar-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.sidebar-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid #d9e0e6;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  color: #43505c;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.sidebar-action:hover {
+  background: #f0f4f8;
+  border-color: #b7c4cf;
+}
+
+.sidebar-action.active {
+  background: #e6f0fa;
+  border-color: #2d6cdf;
+  color: #1d4ed8;
+}
+
+.badge-count {
+  background: #d93a3a;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  line-height: 1.4;
+}
+
+/* -- Inbox / notification panel ------------------------------------------ */
+
+.inbox-panel {
+  background: #ffffff;
+  border: 1px solid #d9e0e6;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.inbox-panel h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #182027;
+}
+
+.inbox-empty {
+  font-size: 13px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.inbox-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inbox-item {
+  background: #f6f8fa;
+  border-radius: 6px;
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.inbox-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inbox-time {
+  font-size: 11px;
+  color: #6a747e;
+  white-space: nowrap;
+}
+
+.inbox-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2d6cdf;
+  text-decoration: none;
+}
+
+.inbox-item-title:hover {
+  text-decoration: underline;
+}
+
+.inbox-item-reason {
+  margin: 0;
+  font-size: 12px;
+  color: #6a747e;
+  line-height: 1.4;
+}

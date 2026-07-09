@@ -150,6 +150,36 @@ export async function syncRepository(payload: SyncRepositoryPayload): Promise<Re
   return response.json()
 }
 
+// -- Webhook event types ----------------------------------------------------
+
+export type WebhookEventItem = {
+  event_id: string
+  event_type: string
+  action: string
+  repository: string
+  issue_number: number
+  classification: {
+    category: string | null
+    confidence: number | null
+    reason: string | null
+  } | null
+  received_at: string
+}
+
+// -- API calls -------------------------------------------------------------
+
+/** Fetch recent webhook events for the notification inbox. */
+export async function fetchWebhookEvents(limit = 20): Promise<WebhookEventItem[]> {
+  const response = await fetch(`${API_BASE_URL}/api/webhooks/events?limit=${limit}`)
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch events: ${response.status}`)
+  }
+
+  return response.json()
+}
+
 /** Ask the repository assistant a question. */
 export async function askAssistant(payload: AssistantChatRequest): Promise<AssistantChatResponse> {
   const response = await fetch(`${API_BASE_URL}/api/assistant/chat`, {
