@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { AlertCircle, Bot, Boxes, FileCode2, FileText, FolderGit, GitBranch, Loader2, Package, RefreshCw, Search, Send, Settings2, Star, TestTube2, UserRound } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './App.css'
 import { askAssistant, syncRepository } from './api'
 import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, RepositorySnapshot } from './api'
@@ -413,7 +415,11 @@ function ChatSidebar({ snapshot }: { snapshot: RepositorySnapshot | null }) {
               {message.role === 'assistant' ? <Bot size={16} aria-hidden="true" /> : <UserRound size={16} aria-hidden="true" />}
             </div>
             <div className="chat-bubble">
-              <p>{message.content}</p>
+              <div className="chat-content markdown-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message.content}
+                </ReactMarkdown>
+              </div>
               {message.toolCalls && message.toolCalls.length > 0 && (
                 <div className="tool-strip">
                   {message.toolCalls.map((tool) => (
