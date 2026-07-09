@@ -911,15 +911,10 @@ button,
   color: #182027;
 }
 
-.settings-panel input {
-  font-family: monospace;
-  letter-spacing: 2px;
-}
-
 .settings-panel input:disabled {
   background: #eef2f6;
-  color: #6a747e;
-  cursor: not-allowed;
+  color: #43505c;
+  cursor: text;
 }
 
 .settings-hint {

@@ -100,11 +100,15 @@ function App() {
           <section className="settings-panel">
             <h3>Webhook 配置</h3>
             <label>
+              Webhook URL
+              <input value="http://85.211.226.195:8000/api/webhooks/github" readOnly disabled />
+            </label>
+            <label>
               GitHub Webhook Secret
-              <input value="••••••••••••" readOnly disabled />
+              <input value="issuescope_webhook_secret_2024" readOnly disabled />
             </label>
             <p className="settings-hint">
-              在 GitHub 仓库 Settings → Webhooks 中配置相同的 Secret 以启用自动监听。
+              在 GitHub 仓库 Settings → Webhooks 中填入以上 URL 和 Secret 以启用自动监听。
             </p>
           </section>
         )}
