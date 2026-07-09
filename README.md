@@ -8,12 +8,19 @@
 - React + Vite + TypeScript 前端，使用 `npm` 管理依赖。
 - 支持输入公开 GitHub 仓库链接并同步仓库元信息、README、目录树、Issue、PR、提交记录。
 - 使用规则分类器完成初版文件分类和 Issue 分类。
-- 使用内存存储快照，后续可替换为 PostgreSQL、任务队列和 RAG 索引。
+- 默认可用内存存储快速开发；配置 `DATABASE_URL` 后会使用 PostgreSQL 持久化主业务数据，并已预留 pgvector 扩展给后续 RAG。
 
 ## 运行后端
 
+首次使用数据库时先启动 PostgreSQL：
+
+```powershell
+docker compose up -d postgres
+```
+
 ```powershell
 cd backend
+$env:DATABASE_URL="postgresql+psycopg://wgy666:wgy666@127.0.0.1:5432/wgy666"
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
@@ -46,7 +53,7 @@ backend/
     core/             # 配置
     schemas/          # API 数据模型
     services/         # GitHub 拉取、分类等业务逻辑
-    storage/          # 存储适配层，当前为内存实现
+    storage/          # 存储适配层，支持内存和 PostgreSQL
 frontend/
   src/
     api.ts            # 前端 API client 与类型
@@ -57,7 +64,7 @@ docs/
 
 ## 后续扩展建议
 
-- 将 `app/storage/memory.py` 替换或并行为 PostgreSQL repository。
+- 在 PostgreSQL 上继续扩展 RAG 知识库表和 pgvector embedding 索引。
 - 为同步流程引入 Celery/Redis，避免大仓库同步阻塞 HTTP 请求。
 - 在 `app/services` 下新增知识库构建、文档切分、向量检索和 LLM 问答服务。
 - 将 `IssueClassifier` 从规则分类升级为“规则初筛 + LLM 复核”的可解释分类流程。
