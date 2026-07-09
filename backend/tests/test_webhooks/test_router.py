@@ -12,8 +12,20 @@ from app.main import create_app
 @pytest.fixture
 def client():
     """FastAPI TestClient without webhook secret (dev mode)."""
+    # Reset secret in case a previous fixture (e.g. secured_client) leaked.
+    from app.core.config import settings
+    settings.github_webhook_secret = None
     app = create_app()
     return TestClient(app)
+
+
+@pytest.fixture
+def clear_store():
+    """Clear the in-memory webhook event store."""
+    from app.webhooks.handler import webhook_event_store
+    webhook_event_store.clear()
+    yield
+    webhook_event_store.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -68,15 +80,14 @@ def test_post_webhook_unknown_event(client):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def secured_client(monkeypatch):
+def secured_client():
     """FastAPI TestClient with a configured webhook secret."""
-    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "mysecret")
-    # Re-create settings & app after patching the env var.
-    # Pydantic-settings reads env at import time, so force reload.
     from app.core.config import settings
+    old_secret = settings.github_webhook_secret
     settings.github_webhook_secret = "mysecret"
     app = create_app()
-    return TestClient(app)
+    yield TestClient(app)
+    settings.github_webhook_secret = old_secret  # restore to not leak
 
 
 def test_post_webhook_correct_signature(secured_client):
@@ -137,3 +148,107 @@ def test_post_webhook_non_opened_issue_with_secret(secured_client):
         },
     )
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Webhook events list
+# ---------------------------------------------------------------------------
+
+def test_list_events_empty(client, clear_store):
+    """No events yet → returns an empty list."""
+    resp = client.get("/api/webhooks/events")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_list_events_after_receiving_issue(client, clear_store):
+    """After receiving an issue webhook, the event appears in the list."""
+    payload = {
+        "action": "opened",
+        "issue": {
+            "title": "Bug: crash when saving",
+            "body": "Getting a traceback error",
+            "number": 42,
+            "labels": [{"name": "bug"}],
+            "state": "open",
+            "html_url": "https://github.com/o/r/issues/42",
+            "user": {"login": "tester"},
+            "created_at": "2026-07-09T10:00:00Z",
+            "updated_at": "2026-07-09T10:00:00Z",
+            "comments": 0,
+        },
+        "repository": {"full_name": "o/r"},
+    }
+
+    # Post the webhook event first.
+    resp = client.post(
+        "/api/webhooks/github",
+        json=payload,
+        headers={"X-GitHub-Event": "issues", "X-GitHub-Delivery": "evt-001"},
+    )
+    assert resp.status_code == 200, f"POST failed: {resp.json()}"
+
+    # Then check the events list.
+    resp = client.get("/api/webhooks/events")
+    assert resp.status_code == 200
+    events = resp.json()
+    assert len(events) >= 1
+    latest = events[0]
+    assert latest["event_id"] == "evt-001"
+    assert latest["event_type"] == "issues"
+    assert latest["action"] == "opened"
+    assert latest["repository"] == "o/r"
+    assert latest["issue_number"] == 42
+    assert latest["classification"] is not None
+    assert latest["classification"]["category"] == "bug"
+
+
+def test_list_events_respects_limit(client, clear_store):
+    """The limit parameter trims the result set."""
+    for i in range(5):
+        payload = {
+            "action": "opened",
+            "issue": {"title": f"Issue {i}", "body": "", "number": 100 + i, "labels": []},
+            "repository": {"full_name": "o/r"},
+        }
+        resp = client.post(
+            "/api/webhooks/github",
+            json=payload,
+            headers={"X-GitHub-Event": "issues", "X-GitHub-Delivery": f"evt-limit-{i}"},
+        )
+        assert resp.status_code == 200, f"POST {i} failed: {resp.json()}"
+
+    resp = client.get("/api/webhooks/events?limit=3")
+    assert len(resp.json()) == 3
+
+
+def test_list_events_ignores_non_issues(client):
+    """Non-issue events are not stored (silently ignored)."""
+    payload = {"action": "opened", "issue": {"number": 1, "title": "x"}, "repository": {"full_name": "o/r"}}
+
+    # Unknown event → not recorded.
+    client.post(
+        "/api/webhooks/github",
+        json=payload,
+        headers={"X-GitHub-Event": "push", "X-GitHub-Delivery": "evt-push-1"},
+    )
+
+    resp = client.get("/api/webhooks/events")
+    assert resp.json() == []
+
+
+def test_list_events_non_opened_not_stored(client):
+    """Non-'opened' issue actions are not stored."""
+    payload = {
+        "action": "edited",
+        "issue": {"title": "Edited issue", "body": "", "number": 99, "labels": []},
+        "repository": {"full_name": "o/r"},
+    }
+    client.post(
+        "/api/webhooks/github",
+        json=payload,
+        headers={"X-GitHub-Event": "issues", "X-GitHub-Delivery": "evt-edit-1"},
+    )
+
+    resp = client.get("/api/webhooks/events")
+    assert resp.json() == []
