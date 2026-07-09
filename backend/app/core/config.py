@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     github_api_version: str = "2022-11-28"
     request_timeout_seconds: float = 20.0
 
+    # --- Database ---
+    database_url: str | None = Field(
+        default=None,
+        validation_alias="DATABASE_URL",
+        description=(
+            "SQLAlchemy PostgreSQL URL. When unset, the app falls back to "
+            "the in-memory development store."
+        ),
+    )
+
     # --- Webhook ---
     github_webhook_secret: str | None = Field(
         default=None,

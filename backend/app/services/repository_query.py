@@ -6,7 +6,7 @@ from app.schemas.assistant import FreshnessMode
 from app.schemas.issue import GitHubIssue
 from app.schemas.repository import ClassifiedFile, RepositorySnapshot, SyncRepositoryRequest
 from app.services.repository_sync import RepositorySyncService
-from app.storage.memory import repository_store
+from app.storage import repository_store
 
 
 STALE_AFTER = timedelta(minutes=10)
