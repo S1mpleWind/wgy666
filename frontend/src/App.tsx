@@ -171,11 +171,11 @@ function App() {
           <div />
           <div className="top-actions">
             <button className={`icon-button ${showInbox ? 'active' : ''}`} onClick={() => setShowInbox(!showInbox)} title="通知">
-              <Bell size={18} aria-hidden="true" />
+              <Bell size={27} aria-hidden="true" />
               {webhookEvents.length > 0 && <span className="badge-count">{webhookEvents.length}</span>}
             </button>
             <button className={`icon-button ${showSettings ? 'active' : ''}`} onClick={() => setShowSettings(!showSettings)} title="配置">
-              <Settings2 size={18} aria-hidden="true" />
+              <Settings2 size={27} aria-hidden="true" />
             </button>
           </div>
         </div>

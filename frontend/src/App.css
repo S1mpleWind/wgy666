@@ -976,15 +976,15 @@ button,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  height: 42px;
   border: 1px solid #d9e0e6;
   border-radius: 8px;
   background: #ffffff;
   color: #43505c;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
-  font-size: 16px;
+  font-size: 20px;
 }
 
 .icon-button:hover {
