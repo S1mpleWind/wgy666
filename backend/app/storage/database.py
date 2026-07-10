@@ -122,6 +122,47 @@ sync_runs = Table(
 )
 
 
+knowledge_nodes = Table(
+    "knowledge_nodes",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("node_key", String(512), nullable=False),
+    Column("node_type", String(128), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("path", Text),
+    Column("summary", Text, nullable=False),
+    Column("metadata_json", JSON, nullable=False, default=dict),
+    UniqueConstraint("repository_id", "node_key", name="uq_knowledge_nodes_repo_key"),
+)
+
+knowledge_edges = Table(
+    "knowledge_edges",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("source_key", String(512), nullable=False),
+    Column("target_key", String(512), nullable=False),
+    Column("relation", String(128), nullable=False),
+    Column("metadata_json", JSON, nullable=False, default=dict),
+)
+
+knowledge_chunks = Table(
+    "knowledge_chunks",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("chunk_key", String(512), nullable=False),
+    Column("title", Text, nullable=False),
+    Column("content", Text, nullable=False),
+    Column("source_type", String(128), nullable=False),
+    Column("source_path", Text),
+    Column("node_keys", JSON, nullable=False, default=list),
+    Column("metadata_json", JSON, nullable=False, default=dict),
+    UniqueConstraint("repository_id", "chunk_key", name="uq_knowledge_chunks_repo_key"),
+)
+
+
 def create_database_engine() -> Engine:
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL is not configured.")

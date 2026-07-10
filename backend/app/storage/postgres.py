@@ -6,11 +6,15 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import Engine
 
 from app.schemas.repository import RepositoryListItem, RepositorySnapshot
+from app.services.knowledge_graph import KnowledgeGraphService
 from app.storage.database import (
     commits,
     create_database_engine,
     initialize_database,
     issues,
+    knowledge_chunks,
+    knowledge_edges,
+    knowledge_nodes,
     pull_requests,
     repositories,
     repository_files,
@@ -50,6 +54,7 @@ class PostgresRepositoryStore:
             self._replace_issues(connection, repository_id, snapshot)
             self._replace_pull_requests(connection, repository_id, snapshot)
             self._replace_commits(connection, repository_id, snapshot)
+            self._replace_knowledge_graph(connection, repository_id, snapshot)
             self._record_sync_run(connection, repository_id, snapshot)
 
     def get(self, owner: str, name: str) -> RepositorySnapshot | None:
@@ -226,6 +231,61 @@ class PostgresRepositoryStore:
                 for commit in snapshot.recent_commits
             ],
         )
+
+
+    def _replace_knowledge_graph(self, connection, repository_id: int, snapshot: RepositorySnapshot) -> None:
+        graph = KnowledgeGraphService().build(snapshot)
+        connection.execute(delete(knowledge_edges).where(knowledge_edges.c.repository_id == repository_id))
+        connection.execute(delete(knowledge_chunks).where(knowledge_chunks.c.repository_id == repository_id))
+        connection.execute(delete(knowledge_nodes).where(knowledge_nodes.c.repository_id == repository_id))
+
+        if graph.nodes:
+            connection.execute(
+                insert(knowledge_nodes),
+                [
+                    {
+                        "repository_id": repository_id,
+                        "node_key": node.key,
+                        "node_type": node.type,
+                        "name": node.name,
+                        "path": node.path,
+                        "summary": node.summary,
+                        "metadata_json": node.metadata,
+                    }
+                    for node in graph.nodes
+                ],
+            )
+        if graph.edges:
+            connection.execute(
+                insert(knowledge_edges),
+                [
+                    {
+                        "repository_id": repository_id,
+                        "source_key": edge.source,
+                        "target_key": edge.target,
+                        "relation": edge.relation,
+                        "metadata_json": edge.metadata,
+                    }
+                    for edge in graph.edges
+                ],
+            )
+        if graph.chunks:
+            connection.execute(
+                insert(knowledge_chunks),
+                [
+                    {
+                        "repository_id": repository_id,
+                        "chunk_key": chunk.key,
+                        "title": chunk.title,
+                        "content": chunk.content,
+                        "source_type": chunk.source_type,
+                        "source_path": chunk.source_path,
+                        "node_keys": chunk.node_keys,
+                        "metadata_json": chunk.metadata,
+                    }
+                    for chunk in graph.chunks
+                ],
+            )
 
     def _record_sync_run(self, connection, repository_id: int, snapshot: RepositorySnapshot) -> None:
         now = datetime.now(timezone.utc)

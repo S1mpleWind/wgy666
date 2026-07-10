@@ -6,6 +6,7 @@ from typing import Any
 from app.schemas.assistant import AssistantCitation, AssistantToolCall
 from app.schemas.project_analysis import ProjectAnalysis
 from app.schemas.repository import RepositorySnapshot
+from app.services.knowledge_graph import KnowledgeGraphService
 from app.services.project_analysis import ProjectAnalysisService
 from app.services.repository_query import RepositoryQueryService
 
@@ -25,6 +26,7 @@ class RepositoryAssistantTools:
     def __init__(self) -> None:
         self.query = RepositoryQueryService()
         self.project_analysis = ProjectAnalysisService()
+        self.knowledge_graph = KnowledgeGraphService()
 
     def overview(self, snapshot: RepositorySnapshot) -> ToolResult:
         stats = snapshot.stats
@@ -166,6 +168,47 @@ class RepositoryAssistantTools:
             content=content,
             citations=citations,
         )
+
+
+    def knowledge_graph_search(
+        self,
+        snapshot: RepositorySnapshot,
+        query: str | None = None,
+        focus: str | None = None,
+    ) -> ToolResult:
+        results = self.knowledge_graph.search(snapshot, query=query, focus=focus)
+        if not results:
+            content = "No graph RAG knowledge chunks matched the query."
+            citations: list[AssistantCitation] = []
+        else:
+            sections = []
+            citations = []
+            for result in results:
+                chunk = result.chunk
+                node_names = ", ".join(node.name for node in result.related_nodes[:5])
+                sections.append(
+                    f"## {chunk.title}\n"
+                    f"Score: {result.score:.1f}\n"
+                    f"Related graph nodes: {node_names or 'none'}\n"
+                    f"{chunk.content}"
+                )
+                for node in result.related_nodes:
+                    if node.path:
+                        citations.append(
+                            AssistantCitation(type=node.type, label=node.name, path=node.path)
+                        )
+            content = "\n\n".join(sections)
+
+        return ToolResult(
+            call=AssistantToolCall(
+                name="knowledge_graph_search",
+                args={"query": query, "focus": focus},
+                summary="Search graph-enhanced RAG knowledge for structure, modules, dependencies, and tests.",
+            ),
+            content=content,
+            citations=citations[:8],
+        )
+
 
 
 def merge_citations(results: list[ToolResult]) -> list[AssistantCitation]:
