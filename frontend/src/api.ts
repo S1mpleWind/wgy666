@@ -168,6 +168,17 @@ export type WebhookEventItem = {
 
 // -- API calls -------------------------------------------------------------
 
+/** Fetch webhook configuration (URL and secret) from the backend. */
+export async function fetchWebhookConfig(): Promise<{ url: string; secret: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/webhooks/config`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch webhook config: ${response.status}`)
+  }
+
+  return response.json()
+}
+
 /** Fetch recent webhook events for the notification inbox. */
 export async function fetchWebhookEvents(limit = 20): Promise<WebhookEventItem[]> {
   const response = await fetch(`${API_BASE_URL}/api/webhooks/events?limit=${limit}`)

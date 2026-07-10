@@ -34,6 +34,22 @@ async def github_webhook(
     return {"status": "ok"}
 
 
+@router.get("/config")
+async def webhook_config(request: Request) -> dict:
+    """Return the webhook configuration for the frontend settings panel.
+
+    Exposes the public URL and the configured secret so users can copy
+    them into GitHub's Webhook settings page.
+    """
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("host", request.url.netloc)
+    public_url = f"{scheme}://{host}/api/webhooks/github"
+    return {
+        "url": public_url,
+        "secret": settings.github_webhook_secret or "",
+    }
+
+
 @router.get("/events")
 async def list_webhook_events(limit: int = 20) -> list[dict]:
     """Return recent webhook events from the in-memory store.

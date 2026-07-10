@@ -4,7 +4,7 @@ import { AlertCircle, Bell, Bot, Boxes, FileCode2, FileText, FolderGit, GitBranc
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './App.css'
-import { askAssistant, fetchWebhookEvents, syncRepository } from './api'
+import { askAssistant, fetchWebhookConfig, fetchWebhookEvents, syncRepository } from './api'
 import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, RepositorySnapshot, WebhookEventItem } from './api'
 
 /**
@@ -26,6 +26,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showInbox, setShowInbox] = useState(false)
+  const [webhookConfig, setWebhookConfig] = useState<{ url: string; secret: string } | null>(null)
   const [webhookEvents, setWebhookEvents] = useState<WebhookEventItem[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
 
@@ -48,6 +49,12 @@ function App() {
       loadEvents()
     }
   }, [showInbox, loadEvents])
+
+  useEffect(() => {
+    if (showSettings) {
+      fetchWebhookConfig().then(setWebhookConfig).catch(() => {})
+    }
+  }, [showSettings])
 
   // -- Sync form handler --------------------------------------------------
 
@@ -165,11 +172,11 @@ function App() {
             <h3>Webhook 配置</h3>
             <label>
               Webhook URL
-              <input value="http://85.211.226.195:8000/api/webhooks/github" readOnly disabled />
+              <input value={webhookConfig?.url ?? '加载中...'} readOnly disabled />
             </label>
             <label>
               GitHub Webhook Secret
-              <input value="issuescope_webhook_secret_2024" readOnly disabled />
+              <input value={webhookConfig?.secret || '(未配置)'} readOnly disabled />
             </label>
             <p className="settings-hint">
               在 GitHub 仓库 Settings → Webhooks 中填入以上 URL 和 Secret 以启用自动监听。
