@@ -56,6 +56,19 @@ function App() {
     }
   }, [showSettings])
 
+  // Auto-poll for new notifications (updates the badge count).
+  useEffect(() => {
+    const poll = setInterval(async () => {
+      try {
+        const events = await fetchWebhookEvents(20)
+        setWebhookEvents(events)
+      } catch { /* ignore */ }
+    }, 30000)
+    // Initial fetch
+    fetchWebhookEvents(20).then(setWebhookEvents).catch(() => {})
+    return () => clearInterval(poll)
+  }, [])
+
   // -- Sync form handler --------------------------------------------------
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -122,67 +135,16 @@ function App() {
         </form>
 
         <div className="sidebar-actions">
-          <button className={`ghost-button sidebar-action ${showInbox ? 'active' : ''}`} onClick={() => setShowInbox(!showInbox)}>
+          <button className="ghost-button sidebar-action" onClick={() => setShowInbox(!showInbox)}>
             <Bell size={16} aria-hidden="true" />
             通知
             {webhookEvents.length > 0 && <span className="badge-count">{webhookEvents.length}</span>}
           </button>
-          <button className={`ghost-button sidebar-action ${showSettings ? 'active' : ''}`} onClick={() => setShowSettings(!showSettings)}>
+          <button className="ghost-button sidebar-action" onClick={() => setShowSettings(!showSettings)}>
             <Settings2 size={16} aria-hidden="true" />
             配置
           </button>
         </div>
-
-        {showInbox && (
-          <section className="inbox-panel">
-            <h3>通知</h3>
-            {eventsLoading ? (
-              <p className="muted inbox-empty">加载中...</p>
-            ) : webhookEvents.length === 0 ? (
-              <p className="muted inbox-empty">暂无通知</p>
-            ) : (
-              <div className="inbox-list">
-                {webhookEvents.map((event) => (
-                  <div className="inbox-item" key={event.event_id}>
-                    <div className="inbox-item-header">
-                      <span className={`badge ${event.classification?.category ?? ''}`}>
-                        {formatCategory(event.classification?.category ?? 'unknown')}
-                      </span>
-                      <span className="inbox-time">{formatTimeAgo(event.received_at)}</span>
-                    </div>
-                    <a
-                      href={`https://github.com/${event.repository}/issues/${event.issue_number}`}
-                      target="_blank"
-                      className="inbox-item-title"
-                    >
-                      {event.repository}#{event.issue_number}
-                    </a>
-                    {event.classification?.reason && (
-                      <p className="inbox-item-reason">{event.classification.reason}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {showSettings && (
-          <section className="settings-panel">
-            <h3>Webhook 配置</h3>
-            <label>
-              Webhook URL
-              <input value={webhookConfig?.url ?? '加载中...'} readOnly disabled />
-            </label>
-            <label>
-              GitHub Webhook Secret
-              <input value={webhookConfig?.secret || '(未配置)'} readOnly disabled />
-            </label>
-            <p className="settings-hint">
-              在 GitHub 仓库 Settings → Webhooks 中填入以上 URL 和 Secret 以启用自动监听。
-            </p>
-          </section>
-        )}
 
         {error && (
           <div className="notice error">
@@ -204,6 +166,82 @@ function App() {
 
       {/* -- Main content: dashboard --------------------------------------- */}
       <section className="content">
+        {/* Top bar with actions (always visible) */}
+        <div className="top-bar">
+          <div />
+          <div className="top-actions">
+            <button className={`icon-button ${showInbox ? 'active' : ''}`} onClick={() => setShowInbox(!showInbox)} title="通知">
+              <Bell size={18} aria-hidden="true" />
+              {webhookEvents.length > 0 && <span className="badge-count">{webhookEvents.length}</span>}
+            </button>
+            <button className={`icon-button ${showSettings ? 'active' : ''}`} onClick={() => setShowSettings(!showSettings)} title="配置">
+              <Settings2 size={18} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        {/* Modal overlays */}
+        {showInbox && (
+          <div className="modal-overlay" onClick={() => setShowInbox(false)}>
+            <section className="modal inbox-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>通知</h3>
+                <button className="icon-button" onClick={() => setShowInbox(false)}>&#x2715;</button>
+              </div>
+              {eventsLoading ? (
+                <p className="muted inbox-empty">加载中...</p>
+              ) : webhookEvents.length === 0 ? (
+                <p className="muted inbox-empty">暂无通知</p>
+              ) : (
+                <div className="inbox-list">
+                  {webhookEvents.map((event) => (
+                    <div className="inbox-item" key={event.event_id}>
+                      <div className="inbox-item-header">
+                        <span className={`badge ${event.classification?.category ?? ''}`}>
+                          {formatCategory(event.classification?.category ?? 'unknown')}
+                        </span>
+                        <span className="inbox-time">{formatTimeAgo(event.received_at)}</span>
+                      </div>
+                      <a
+                        href={`https://github.com/${event.repository}/issues/${event.issue_number}`}
+                        target="_blank"
+                        className="inbox-item-title"
+                      >
+                        {event.repository}#{event.issue_number}
+                      </a>
+                      {event.classification?.reason && (
+                        <p className="inbox-item-reason">{event.classification.reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {showSettings && (
+          <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+            <section className="modal settings-panel" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Webhook 配置</h3>
+                <button className="icon-button" onClick={() => setShowSettings(false)}>&#x2715;</button>
+              </div>
+              <label>
+                Webhook URL
+                <input value={webhookConfig?.url ?? '加载中...'} readOnly disabled />
+              </label>
+              <label>
+                GitHub Webhook Secret
+                <input value={webhookConfig?.secret || '(未配置)'} readOnly disabled />
+              </label>
+              <p className="settings-hint">
+                在 GitHub 仓库 Settings → Webhooks 中填入以上 URL 和 Secret 以启用自动监听。
+              </p>
+            </section>
+          </div>
+        )}
+
         {!snapshot ? (
           <EmptyState isLoading={isLoading} />
         ) : (
