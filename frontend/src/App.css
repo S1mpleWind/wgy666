@@ -924,7 +924,7 @@ button,
   line-height: 1.5;
 }
 
-/* -- Sidebar actions (notifications, settings) --------------------------- */
+/* -- Sidebar actions (main page sidebar) --------------------------------- */
 
 .sidebar-actions {
   display: flex;
@@ -953,46 +953,116 @@ button,
   border-color: #b7c4cf;
 }
 
-.sidebar-action.active {
+/* -- Top bar (actions row above content) --------------------------------- */
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 12px;
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* -- Icon button (for top bar) ------------------------------------------- */
+
+.icon-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #d9e0e6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #43505c;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-size: 16px;
+}
+
+.icon-button:hover {
+  background: #f0f4f8;
+  border-color: #b7c4cf;
+}
+
+.icon-button.active {
   background: #e6f0fa;
   border-color: #2d6cdf;
   color: #1d4ed8;
 }
 
 .badge-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
   background: #d93a3a;
   color: #ffffff;
   font-size: 10px;
   font-weight: 700;
-  padding: 1px 5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   border-radius: 999px;
-  line-height: 1.4;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #ffffff;
 }
 
-/* -- Inbox / notification panel ------------------------------------------ */
+/* -- Modal overlay ------------------------------------------------------- */
 
-.inbox-panel {
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(24, 32, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
   background: #ffffff;
-  border: 1px solid #d9e0e6;
-  border-radius: 8px;
-  padding: 12px;
-  display: grid;
-  gap: 8px;
-  max-height: 360px;
+  border-radius: 12px;
+  padding: 20px;
+  width: 420px;
+  max-height: 70vh;
   overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  display: grid;
+  gap: 14px;
 }
 
-.inbox-panel h3 {
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-header h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: #182027;
+}
+
+/* -- Inbox / notification panel (inside modal) --------------------------- */
+
+.inbox-panel {
+  min-height: 200px;
 }
 
 .inbox-empty {
   font-size: 13px;
   text-align: center;
-  padding: 12px 0;
+  padding: 24px 0;
+  color: #6a747e;
 }
 
 .inbox-list {
