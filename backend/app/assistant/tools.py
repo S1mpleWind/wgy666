@@ -9,6 +9,7 @@ from app.schemas.repository import RepositorySnapshot
 from app.services.knowledge_graph import KnowledgeGraphService
 from app.services.project_analysis import ProjectAnalysisService
 from app.services.repository_query import RepositoryQueryService
+from app.storage import repository_store
 
 
 @dataclass
@@ -176,6 +177,36 @@ class RepositoryAssistantTools:
         query: str | None = None,
         focus: str | None = None,
     ) -> ToolResult:
+        vector_rows = []
+        if hasattr(repository_store, "search_knowledge"):
+            try:
+                vector_rows = repository_store.search_knowledge(
+                    snapshot.identity.owner,
+                    snapshot.identity.name,
+                    query or focus or "repository knowledge",
+                )
+            except Exception:
+                vector_rows = []
+        if vector_rows:
+            content = "\n\n".join(
+                f"## {row['title']}\nScore: {float(row.get('score') or 0):.3f}\n{row['content']}"
+                for row in vector_rows
+            )
+            citations = [
+                AssistantCitation(type=row["source_type"], label=row["title"], path=row.get("source_path"))
+                for row in vector_rows
+                if row.get("source_path")
+            ]
+            return ToolResult(
+                call=AssistantToolCall(
+                    name="knowledge_graph_search",
+                    args={"query": query, "focus": focus},
+                    summary="Search pgvector-backed source RAG knowledge chunks.",
+                ),
+                content=content,
+                citations=citations[:8],
+            )
+
         results = self.knowledge_graph.search(snapshot, query=query, focus=focus)
         if not results:
             content = "No graph RAG knowledge chunks matched the query."

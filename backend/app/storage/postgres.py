@@ -1,11 +1,14 @@
 """PostgreSQL-backed repository snapshot store."""
 
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.engine import Engine
 
 from app.schemas.repository import RepositoryListItem, RepositorySnapshot
+from app.services.embeddings import EmbeddingService
 from app.services.knowledge_graph import KnowledgeGraphService
 from app.storage.database import (
     commits,
@@ -17,6 +20,7 @@ from app.storage.database import (
     knowledge_nodes,
     pull_requests,
     repositories,
+    repository_file_contents,
     repository_files,
     repository_snapshots,
     sync_runs,
@@ -51,6 +55,7 @@ class PostgresRepositoryStore:
             )
 
             self._replace_files(connection, repository_id, snapshot)
+            self._replace_file_contents(connection, repository_id, snapshot)
             self._replace_issues(connection, repository_id, snapshot)
             self._replace_pull_requests(connection, repository_id, snapshot)
             self._replace_commits(connection, repository_id, snapshot)
@@ -166,6 +171,59 @@ class PostgresRepositoryStore:
             ],
         )
 
+    def _replace_file_contents(self, connection, repository_id: int, snapshot: RepositorySnapshot) -> None:
+        connection.execute(
+            delete(repository_file_contents).where(
+                repository_file_contents.c.repository_id == repository_id
+            )
+        )
+        if not snapshot.source_contents:
+            return
+        connection.execute(
+            insert(repository_file_contents),
+            [
+                {
+                    "repository_id": repository_id,
+                    "path": content.path,
+                    "category": content.category.value,
+                    "content": content.content,
+                    "size": content.size,
+                    "truncated": content.truncated,
+                    "synced_at": snapshot.synced_at,
+                }
+                for content in snapshot.source_contents
+            ],
+        )
+
+    def get_file_contents(self, owner: str, name: str, path: str | None = None) -> list[dict]:
+        """Return file contents for a repository, optionally filtered by path."""
+        repo_subquery = (
+            select(repositories.c.id)
+            .where(repositories.c.owner == owner, repositories.c.name == name)
+            .scalar_subquery()
+        )
+        statement = select(
+            repository_file_contents.c.id,
+            repository_file_contents.c.path,
+            repository_file_contents.c.category,
+            repository_file_contents.c.content,
+            repository_file_contents.c.size,
+            repository_file_contents.c.truncated,
+            repository_file_contents.c.synced_at,
+        ).where(repository_file_contents.c.repository_id == repo_subquery)
+
+        if path:
+            statement = statement.where(repository_file_contents.c.path == path)
+
+        with self.engine.connect() as connection:
+            rows = connection.execute(statement).mappings().all()
+        return [dict(row) for row in rows]
+
+    def get_file_content(self, owner: str, name: str, path: str) -> dict | None:
+        """Return the content of a single file by path."""
+        results = self.get_file_contents(owner, name, path)
+        return results[0] if results else None
+
     def _replace_issues(self, connection, repository_id: int, snapshot: RepositorySnapshot) -> None:
         connection.execute(delete(issues).where(issues.c.repository_id == repository_id))
         if not snapshot.issues:
@@ -270,6 +328,7 @@ class PostgresRepositoryStore:
                 ],
             )
         if graph.chunks:
+            embeddings = EmbeddingService().embed_texts([chunk.content for chunk in graph.chunks])
             connection.execute(
                 insert(knowledge_chunks),
                 [
@@ -282,10 +341,44 @@ class PostgresRepositoryStore:
                         "source_path": chunk.source_path,
                         "node_keys": chunk.node_keys,
                         "metadata_json": chunk.metadata,
+                        "embedding": self._vector_literal(embedding),
                     }
-                    for chunk in graph.chunks
+                    for chunk, embedding in zip(graph.chunks, embeddings, strict=True)
                 ],
             )
+
+    def search_knowledge(self, owner: str, name: str, query: str, limit: int = 5) -> list[dict]:
+        embedding = self._vector_literal(EmbeddingService().embed_query(query))
+        statement = text(
+            """
+            SELECT
+                kc.chunk_key,
+                kc.title,
+                kc.content,
+                kc.source_type,
+                kc.source_path,
+                kc.node_keys,
+                kc.metadata_json,
+                1 - (kc.embedding <=> CAST(:embedding AS vector)) AS score
+            FROM knowledge_chunks kc
+            JOIN repositories r ON r.id = kc.repository_id
+            WHERE r.owner = :owner
+              AND r.name = :name
+              AND kc.embedding IS NOT NULL
+            ORDER BY kc.embedding <=> CAST(:embedding AS vector)
+            LIMIT :limit
+            """
+        )
+        with self.engine.connect() as connection:
+            rows = connection.execute(
+                statement,
+                {"owner": owner, "name": name, "embedding": embedding, "limit": limit},
+            ).mappings().all()
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    def _vector_literal(vector: list[float]) -> str:
+        return "[" + ",".join(f"{value:.8f}" for value in vector) + "]"
 
     def _record_sync_run(self, connection, repository_id: int, snapshot: RepositorySnapshot) -> None:
         now = datetime.now(timezone.utc)

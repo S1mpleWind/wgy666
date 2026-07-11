@@ -6,6 +6,7 @@ from app.schemas.repository import (
     CategorySummary,
     ClassifiedFile,
     FileCategory,
+    RepositoryFileContent,
     RepositoryIdentity,
     RepositorySnapshot,
     RepositoryStats,

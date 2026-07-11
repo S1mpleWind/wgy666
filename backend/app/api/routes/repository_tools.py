@@ -8,6 +8,7 @@ from app.schemas.repository_tools import FileSearchResult, IssueSearchResult, Re
 from app.services.github_client import GitHubClientError
 from app.services.project_analysis import ProjectAnalysisService
 from app.services.repository_query import RepositoryQueryService
+from app.storage import repository_store
 
 router = APIRouter(prefix="/repositories/{owner}/{name}/tools", tags=["repository-tools"])
 
@@ -77,6 +78,46 @@ async def list_issues(
         issues=service.list_issues(snapshot, category=category, state=state, limit=limit),
         used_cached_data=used_cached_data,
     )
+
+
+@router.get("/file-contents")
+async def list_file_contents(
+    owner: str,
+    name: str,
+) -> list[dict]:
+    """List all synced source file contents for the repository."""
+    contents = repository_store.get_file_contents(owner, name)
+    if not contents:
+        # Check if the repository exists at all
+        snapshot = repository_store.get(owner, name)
+        if snapshot is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Repository snapshot was not found. Sync it first.",
+            )
+    return contents
+
+
+@router.get("/file-contents/{path:path}")
+async def get_file_content(
+    owner: str,
+    name: str,
+    path: str,
+) -> dict:
+    """Return the content of a single file by its full path from the database."""
+    content = repository_store.get_file_content(owner, name, path)
+    if content is None:
+        snapshot = repository_store.get(owner, name)
+        if snapshot is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Repository {owner}/{name} was not found. Sync it first.",
+            )
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{path}' not found in repository {owner}/{name}. Sync it first.",
+        )
+    return content
 
 
 async def _get_snapshot(owner: str, name: str, freshness: FreshnessMode):

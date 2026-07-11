@@ -26,6 +26,7 @@ KNOWLEDGE_FOCUS = [
     "modules",
     "dependencies",
     "tests",
+    "source_code",
 ]
 
 ISSUE_CATEGORIES = [

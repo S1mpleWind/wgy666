@@ -4,6 +4,8 @@ from collections import Counter, defaultdict
 from pathlib import PurePosixPath
 import re
 
+from app.core.config import settings
+
 from app.schemas.knowledge import (
     KnowledgeChunk,
     KnowledgeEdge,
@@ -75,6 +77,7 @@ class KnowledgeGraphService:
         chunks.extend(self._module_chunks(nodes, directories, module_keys))
         chunks.extend(self._dependency_chunks(nodes, dependency_keys))
         chunks.extend(self._test_chunks(snapshot, nodes, test_keys))
+        chunks.extend(self._source_content_chunks(snapshot))
 
         return RepositoryKnowledgeGraph(
             repository=snapshot.identity.full_name,
@@ -371,6 +374,40 @@ class KnowledgeGraphService:
             )
         ]
 
+    def _source_content_chunks(self, snapshot: RepositorySnapshot) -> list[KnowledgeChunk]:
+        chunks: list[KnowledgeChunk] = []
+        chunk_size = max(500, settings.rag_chunk_size)
+        overlap = min(max(0, settings.rag_chunk_overlap), chunk_size // 2)
+        for file in snapshot.source_contents:
+            start = 0
+            index = 0
+            text = file.content
+            while start < len(text):
+                end = min(len(text), start + chunk_size)
+                content = text[start:end].strip()
+                if content:
+                    chunks.append(
+                        KnowledgeChunk(
+                            key=f"chunk:source:{file.path}:{index}",
+                            title=f"{file.path} source chunk {index + 1}",
+                            content=content,
+                            source_type=file.category.value,
+                            source_path=file.path,
+                            node_keys=[],
+                            metadata={
+                                "focus": "source_code" if file.category.value == "source_code" else file.category.value,
+                                "path": file.path,
+                                "chunk_index": index,
+                                "truncated_file": file.truncated,
+                            },
+                        )
+                    )
+                if end >= len(text):
+                    break
+                start = max(end - overlap, start + 1)
+                index += 1
+        return chunks
+
     def _repository_summary(self, snapshot: RepositorySnapshot) -> str:
         languages = ", ".join(snapshot.stats.languages) or snapshot.stats.primary_language or "unknown"
         return (
@@ -420,6 +457,8 @@ class KnowledgeGraphService:
             "依赖": "dependency",
             "测试": "test",
             "脚本": "script",
+            "源码": "source_code",
+            "代码": "source_code",
         }
         for source, target in aliases.items():
             normalized = normalized.replace(source, f" {target} ")

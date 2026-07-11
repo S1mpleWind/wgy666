@@ -35,6 +35,7 @@ class KnowledgeChunk(BaseModel):
     source_path: str | None = None
     node_keys: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    embedding: list[float] | None = None
 
 
 class KnowledgeSearchResult(BaseModel):
