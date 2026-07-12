@@ -1,0 +1,257 @@
+/**
+ * API client and TypeScript type definitions.
+ *
+ * These types mirror the backend Pydantic schemas in ``backend/app/schemas/``.
+ * Keep them in sync when making changes on either side.
+ */
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+
+// -- Types (mirrors backend/app/schemas/) ---------------------------------
+
+export type CategorySummary = {
+  category: string
+  count: number
+}
+
+export type IssueClassification = {
+  category: string
+  confidence: number
+  reason: string
+  suggested_action: string
+  signals: string[]
+}
+
+export type GitHubIssue = {
+  number: number
+  title: string
+  state: string
+  html_url: string
+  author: string | null
+  labels: string[]
+  comments: number
+  classification: IssueClassification
+  updated_at: string | null
+}
+
+export type ClassifiedFile = {
+  path: string
+  category: string
+  size: number | null
+}
+
+export type PullRequestSummary = {
+  number: number
+  title: string
+  state: string
+  html_url: string
+  author: string | null
+  updated_at: string | null
+}
+
+export type CommitSummary = {
+  sha: string
+  message: string
+  author: string | null
+  html_url: string | null
+  committed_at: string | null
+}
+
+export type RepositorySnapshot = {
+  identity: {
+    owner: string
+    name: string
+    full_name: string
+    html_url: string
+    default_branch: string
+  }
+  description: string | null
+  stats: {
+    stars: number
+    forks: number
+    watchers: number
+    open_issues: number
+    size_kb: number
+    primary_language: string | null
+    languages: Record<string, number>
+  }
+  topics: string[]
+  readme: string | null
+  files: ClassifiedFile[]
+  file_categories: CategorySummary[]
+  issues: GitHubIssue[]
+  issue_categories: CategorySummary[]
+  pull_requests: PullRequestSummary[]
+  recent_commits: CommitSummary[]
+  synced_at: string
+}
+
+export type SyncRepositoryPayload = {
+  url: string
+  max_issues: number
+  max_pull_requests: number
+  max_commits: number
+  max_tree_items: number
+}
+
+export type FreshnessMode = 'cache_first' | 'refresh_if_stale' | 'force_refresh'
+
+export type AssistantChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type AssistantToolCall = {
+  name: string
+  args: Record<string, unknown>
+  summary: string
+}
+
+export type AssistantCitation = {
+  type: string
+  label: string
+  url: string | null
+  path: string | null
+}
+
+export type AssistantChatRequest = {
+  owner: string
+  name: string
+  message: string
+  freshness?: FreshnessMode
+  history?: AssistantChatMessage[]
+}
+
+export type AssistantChatResponse = {
+  answer: string
+  repository: string
+  used_cached_data: boolean
+  tool_calls: AssistantToolCall[]
+  citations: AssistantCitation[]
+}
+
+export type RepositoryFileContent = {
+  id: number
+  path: string
+  category: string
+  content: string
+  size: number | null
+  truncated: boolean
+  synced_at: string | null
+}
+
+// -- API calls -------------------------------------------------------------
+
+/** Trigger a full repository sync: fetch → classify → cache. */
+export async function syncRepository(payload: SyncRepositoryPayload): Promise<RepositorySnapshot> {
+  const response = await fetch(`${API_BASE_URL}/api/repositories/sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Request failed with ${response.status}`)
+  }
+
+  return response.json()
+}
+
+// -- Webhook event types ----------------------------------------------------
+
+export type WebhookEventItem = {
+  event_id: string
+  event_type: string
+  action: string
+  repository: string
+  issue_number: number
+  classification: {
+    category: string | null
+    confidence: number | null
+    reason: string | null
+  } | null
+  received_at: string
+}
+
+// -- API calls -------------------------------------------------------------
+
+/** Fetch webhook configuration (URL and secret) from the backend. */
+export async function fetchWebhookConfig(): Promise<{ url: string; secret: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/webhooks/config`)
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch webhook config: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/** Fetch recent webhook events for the notification inbox. */
+export async function fetchWebhookEvents(limit = 20): Promise<WebhookEventItem[]> {
+  const response = await fetch(`${API_BASE_URL}/api/webhooks/events?limit=${limit}`)
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch events: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/** Fetch all synced file contents for a repository. */
+export async function fetchFileContents(owner: string, name: string): Promise<RepositoryFileContent[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${owner}/${name}/tools/file-contents`,
+  )
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch file contents: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/** Fetch a single file's full content by path. */
+export async function fetchFileContent(
+  owner: string,
+  name: string,
+  path: string,
+): Promise<RepositoryFileContent> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${owner}/${name}/tools/file-contents/${encodeURIComponent(path)}`,
+  )
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch file content: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/** Ask the repository assistant a question. */
+export async function askAssistant(payload: AssistantChatRequest): Promise<AssistantChatResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/assistant/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      freshness: 'refresh_if_stale',
+      history: [],
+      ...payload,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Request failed with ${response.status}`)
+  }
+
+  return response.json()
+}
+
