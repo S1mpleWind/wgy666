@@ -30,5 +30,9 @@ Thumbs.db
 CLAUDE.md
 .claude/*
 
-# UI Prototype
-UIprototype/
+# UI Prototype build artifacts
+UIprototype/vision_doc/vision-github-qa.toc
+UIprototype/vision_doc/vision-github-qa.log
+UIprototype/vision_doc/vision-github-qa.aux
+UIprototype/vision_doc/vision-github-qa.out
+UIprototype/vision_doc/docx_temp/
