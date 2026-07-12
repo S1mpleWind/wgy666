@@ -3,6 +3,7 @@
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -15,9 +16,18 @@ from sqlalchemy import (
     create_engine,
     text,
 )
+from sqlalchemy.types import UserDefinedType
 from sqlalchemy.engine import Engine
 
 from app.core.config import settings
+
+class VectorType(UserDefinedType):
+    def __init__(self, dimensions: int) -> None:
+        self.dimensions = dimensions
+
+    def get_col_spec(self, **_: object) -> str:
+        return f"vector({self.dimensions})"
+
 
 metadata = MetaData()
 
@@ -60,6 +70,20 @@ repository_files = Table(
     Column("category", String(64), nullable=False),
     Column("size", BigInteger),
     UniqueConstraint("repository_id", "path", name="uq_repository_files_repo_path"),
+)
+
+repository_file_contents = Table(
+    "repository_file_contents",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("path", Text, nullable=False),
+    Column("category", String(64), nullable=False),
+    Column("content", Text, nullable=False),
+    Column("size", BigInteger),
+    Column("truncated", Boolean, nullable=False, default=False),
+    Column("synced_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("repository_id", "path", name="uq_repository_file_contents_repo_path"),
 )
 
 issues = Table(
@@ -122,6 +146,48 @@ sync_runs = Table(
 )
 
 
+knowledge_nodes = Table(
+    "knowledge_nodes",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("node_key", String(512), nullable=False),
+    Column("node_type", String(128), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("path", Text),
+    Column("summary", Text, nullable=False),
+    Column("metadata_json", JSON, nullable=False, default=dict),
+    UniqueConstraint("repository_id", "node_key", name="uq_knowledge_nodes_repo_key"),
+)
+
+knowledge_edges = Table(
+    "knowledge_edges",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("source_key", String(512), nullable=False),
+    Column("target_key", String(512), nullable=False),
+    Column("relation", String(128), nullable=False),
+    Column("metadata_json", JSON, nullable=False, default=dict),
+)
+
+knowledge_chunks = Table(
+    "knowledge_chunks",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("chunk_key", String(512), nullable=False),
+    Column("title", Text, nullable=False),
+    Column("content", Text, nullable=False),
+    Column("source_type", String(128), nullable=False),
+    Column("source_path", Text),
+    Column("node_keys", JSON, nullable=False, default=list),
+    Column("metadata_json", JSON, nullable=False, default=dict),
+    Column("embedding", VectorType(settings.embedding_dimensions)),
+    UniqueConstraint("repository_id", "chunk_key", name="uq_knowledge_chunks_repo_key"),
+)
+
+
 def create_database_engine() -> Engine:
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL is not configured.")
@@ -138,3 +204,5 @@ def initialize_database(engine: Engine) -> None:
     with engine.begin() as connection:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         metadata.create_all(connection)
+        connection.execute(text(f"ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS embedding vector({settings.embedding_dimensions})"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops)"))

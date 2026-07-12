@@ -56,6 +56,16 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=60.0, validation_alias="LLM_TIMEOUT_SECONDS")
     assistant_max_tool_rounds: int = Field(default=3, validation_alias="ASSISTANT_MAX_TOOL_ROUNDS")
 
+    # --- RAG / Embeddings ---
+    embedding_api_base_url: str = Field(default="https://models.sjtu.edu.cn/api/v1", validation_alias="EMBEDDING_API_BASE_URL")
+    embedding_api_key: str | None = Field(default=None, validation_alias="EMBEDDING_API_KEY")
+    embedding_model: str = Field(default="text-embedding-3-small", validation_alias="EMBEDDING_MODEL")
+    embedding_dimensions: int = Field(default=1536, validation_alias="EMBEDDING_DIMENSIONS")
+    rag_max_source_files: int = Field(default=500, validation_alias="RAG_MAX_SOURCE_FILES")
+    rag_max_source_file_bytes: int = Field(default=200000, validation_alias="RAG_MAX_SOURCE_FILE_BYTES")
+    rag_chunk_size: int = Field(default=1800, validation_alias="RAG_CHUNK_SIZE")
+    rag_chunk_overlap: int = Field(default=250, validation_alias="RAG_CHUNK_OVERLAP")
+
     # --- CORS ---
     cors_origins: list[str] = [
         "http://localhost:5173",

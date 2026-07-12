@@ -130,6 +130,16 @@ export type AssistantChatResponse = {
   citations: AssistantCitation[]
 }
 
+export type RepositoryFileContent = {
+  id: number
+  path: string
+  category: string
+  content: string
+  size: number | null
+  truncated: boolean
+  synced_at: string | null
+}
+
 // -- API calls -------------------------------------------------------------
 
 /** Trigger a full repository sync: fetch → classify → cache. */
@@ -186,6 +196,38 @@ export async function fetchWebhookEvents(limit = 20): Promise<WebhookEventItem[]
   if (!response.ok) {
     const error = await response.json().catch(() => null)
     throw new Error(error?.detail ?? `Failed to fetch events: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/** Fetch all synced file contents for a repository. */
+export async function fetchFileContents(owner: string, name: string): Promise<RepositoryFileContent[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${owner}/${name}/tools/file-contents`,
+  )
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch file contents: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/** Fetch a single file's full content by path. */
+export async function fetchFileContent(
+  owner: string,
+  name: string,
+  path: string,
+): Promise<RepositoryFileContent> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${owner}/${name}/tools/file-contents/${encodeURIComponent(path)}`,
+  )
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch file content: ${response.status}`)
   }
 
   return response.json()

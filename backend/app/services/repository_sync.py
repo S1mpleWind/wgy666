@@ -7,10 +7,15 @@ assembles a ``RepositorySnapshot``.
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.config import settings
+
 from app.schemas.issue import GitHubIssue, IssueCategory
 from app.schemas.repository import (
+    ClassifiedFile,
     CommitSummary,
+    FileCategory,
     PullRequestSummary,
+    RepositoryFileContent,
     RepositoryIdentity,
     RepositorySnapshot,
     RepositoryStats,
@@ -50,6 +55,8 @@ class RepositorySyncService:
             commits = await client.get_commits(ref, request.max_commits)
 
         files, file_categories = self.file_classifier.classify_many(tree, request.max_tree_items)
+        async with GitHubClient() as client:
+            source_contents = await self._fetch_source_contents(client, ref, branch, files)
         classified_issues = [self._map_issue(issue) for issue in issues]
         issue_categories = self.issue_classifier.summarize(
             [issue.classification.category for issue in classified_issues]
@@ -76,6 +83,7 @@ class RepositorySyncService:
             topics=repository.get("topics") or [],
             readme=readme,
             files=files,
+            source_contents=source_contents,
             file_categories=file_categories,
             issues=classified_issues,
             issue_categories=issue_categories,
@@ -83,6 +91,57 @@ class RepositorySyncService:
             recent_commits=[self._map_commit(commit) for commit in commits],
             synced_at=datetime.now(timezone.utc),
         )
+
+    async def _fetch_source_contents(
+        self,
+        client: GitHubClient,
+        ref,
+        branch: str,
+        files: list[ClassifiedFile],
+    ) -> list[RepositoryFileContent]:
+        """Fetch source files for persistent storage and RAG indexing.
+
+        All file categories except ASSET (images/binaries) and DATA
+        (large datasets) are indexed. The per-call cap is controlled by
+        ``rag_max_source_files`` and ``rag_max_source_file_bytes``.
+        """
+        indexable_categories = {
+            FileCategory.SOURCE,
+            FileCategory.TEST,
+            FileCategory.DOCUMENTATION,
+            FileCategory.DEPENDENCY,
+            FileCategory.CONFIGURATION,
+            FileCategory.CI_CD,
+            FileCategory.BUILD,
+            FileCategory.OTHER,
+        }
+        selected = [
+            file
+            for file in files
+            if file.category in indexable_categories
+            and (file.size is None or file.size <= settings.rag_max_source_file_bytes)
+        ][: settings.rag_max_source_files]
+
+        contents: list[RepositoryFileContent] = []
+        for file in selected:
+            content, truncated = await client.get_file_content(
+                ref,
+                file.path,
+                branch,
+                settings.rag_max_source_file_bytes,
+            )
+            if content is None or not content.strip():
+                continue
+            contents.append(
+                RepositoryFileContent(
+                    path=file.path,
+                    category=file.category,
+                    content=content,
+                    size=file.size,
+                    truncated=truncated,
+                )
+            )
+        return contents
 
     # -- Mapping helpers (GitHub API → Pydantic models) --------------------
 

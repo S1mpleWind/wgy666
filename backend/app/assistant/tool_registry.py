@@ -20,6 +20,15 @@ FILE_CATEGORIES = [
     "other",
 ]
 
+KNOWLEDGE_FOCUS = [
+    "overview",
+    "structure",
+    "modules",
+    "dependencies",
+    "tests",
+    "source_code",
+]
+
 ISSUE_CATEGORIES = [
     "bug",
     "feature_request",
@@ -113,6 +122,25 @@ class RepositoryToolRegistry:
             {
                 "type": "function",
                 "function": {
+                    "name": "knowledge_graph_search",
+                    "description": "Search the graph-enhanced RAG knowledge base for directory structure, module boundaries, dependency manifests, and test scripts.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "Question or keywords to search in graph RAG chunks."},
+                            "focus": {
+                                "type": "string",
+                                "enum": KNOWLEDGE_FOCUS,
+                                "description": "Optional area to prioritize.",
+                            },
+                        },
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
                     "name": "recent_activity",
                     "description": "Get recent commits and pull requests from synced repository data.",
                     "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -142,6 +170,12 @@ class RepositoryToolRegistry:
             )
         if name == "readme_lookup":
             return self.tools.readme_lookup(snapshot, query=arguments.get("query"))
+        if name == "knowledge_graph_search":
+            return self.tools.knowledge_graph_search(
+                snapshot,
+                query=arguments.get("query"),
+                focus=arguments.get("focus"),
+            )
         if name == "recent_activity":
             return self.tools.recent_activity(snapshot)
 

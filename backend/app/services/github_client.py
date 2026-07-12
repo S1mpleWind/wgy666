@@ -91,6 +91,29 @@ class GitHubClient:
         tree = payload.get("tree")
         return tree if isinstance(tree, list) else []
 
+    async def get_file_content(self, ref: RepositoryRef, path: str, ref_name: str, max_bytes: int) -> tuple[str | None, bool]:
+        """Fetch UTF-8 file content through GitHub contents API, capped for RAG indexing."""
+        encoded_path = quote(path, safe="/")
+        try:
+            payload = await self._get(
+                f"/repos/{ref.owner}/{ref.name}/contents/{encoded_path}",
+                params={"ref": ref_name},
+            )
+        except GitHubClientError as exc:
+            if exc.status_code == 404:
+                return None, False
+            raise
+
+        if payload.get("type") != "file" or payload.get("encoding") != "base64":
+            return None, False
+        raw = payload.get("content")
+        if not raw:
+            return None, False
+        decoded = base64.b64decode(raw).decode("utf-8", errors="replace")
+        byte_length = len(decoded.encode("utf-8"))
+        truncated = byte_length > max_bytes or (payload.get("size") or 0) > max_bytes
+        return decoded[:max_bytes], truncated
+
     # -- Issues, PRs, Commits -----------------------------------------------
 
     async def get_issues(self, ref: RepositoryRef, limit: int) -> list[dict[str, Any]]:

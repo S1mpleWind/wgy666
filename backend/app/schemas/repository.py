@@ -70,6 +70,16 @@ class ClassifiedFile(BaseModel):
     size: int | None = None
 
 
+class RepositoryFileContent(BaseModel):
+    """Source or documentation content fetched for RAG indexing."""
+
+    path: str
+    category: FileCategory
+    content: str
+    size: int | None = None
+    truncated: bool = False
+
+
 class CategorySummary(BaseModel):
     """Aggregated count for a category (used for bar charts)."""
 
@@ -112,6 +122,7 @@ class RepositorySnapshot(BaseModel):
     topics: list[str] = Field(default_factory=list)
     readme: str | None = None
     files: list[ClassifiedFile] = Field(default_factory=list)
+    source_contents: list[RepositoryFileContent] = Field(default_factory=list)
     file_categories: list[CategorySummary] = Field(default_factory=list)
     issues: list[GitHubIssue] = Field(default_factory=list)
     issue_categories: list[CategorySummary] = Field(default_factory=list)
