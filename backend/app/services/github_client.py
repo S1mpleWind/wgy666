@@ -147,62 +147,66 @@ class GitHubClient:
 
     # -- Internal -----------------------------------------------------------
 
-    async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        """Perform a GET request and raise ``GitHubClientError`` on failure."""
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Execute an HTTP request and raise ``GitHubClientError`` with full detail on failure."""
+        method_label = method.upper()
         try:
-            response = await self._client.get(path, params=params)
+            response = await self._client.request(method, path, json=json_data, params=params)
+        except httpx.TimeoutException:
+            raise GitHubClientError(
+                f"[{method_label}] GitHub API timed out after {settings.request_timeout_seconds}s: {path}",
+                status_code=504,
+            )
         except httpx.HTTPError as exc:
             detail = str(exc) or exc.__class__.__name__
-            raise GitHubClientError(f"GitHub request failed: {detail}") from exc
+            raise GitHubClientError(f"[{method_label}] GitHub API connection error on {path}: {detail}") from exc
 
         if response.status_code >= 400:
-            message = "GitHub API request failed."
             try:
-                message = response.json().get("message", message)
+                body = response.json()
+                gh_message = body.get("message", "")
             except ValueError:
-                pass
-            status_code = response.status_code if response.status_code in {400, 401, 403, 404} else 502
-            raise GitHubClientError(message=message, status_code=status_code)
+                gh_message = ""
+
+            # Try to extract rate limit info.
+            rate_remaining = response.headers.get("x-ratelimit-remaining")
+            rate_reset = response.headers.get("x-ratelimit-reset")
+
+            parts = [f"[{method_label}] GitHub API error (HTTP {response.status_code})"]
+            if gh_message:
+                parts.append(f"message: {gh_message}")
+            parts.append(f"path: {path}")
+            if rate_remaining is not None and rate_remaining == "0":
+                parts.append("API rate limit exceeded — set GITHUB_TOKEN or wait")
+            if rate_reset:
+                import datetime
+                reset_time = datetime.datetime.fromtimestamp(int(rate_reset), tz=datetime.timezone.utc)
+                parts.append(f"rate resets at {reset_time.isoformat()}")
+
+            if method_label in ("POST", "PATCH") and response.status_code in (400, 422):
+                # Validation error — include response body detail if available.
+                if isinstance(body, dict) and "errors" in body:
+                    parts.append(f"errors: {body['errors']}")
+
+            status_code = response.status_code if response.status_code in {400, 401, 403, 404, 422, 429} else 502
+            raise GitHubClientError(message=" | ".join(parts), status_code=status_code)
 
         return response.json()
+
+    async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return await self._request("GET", path, params=params)
 
     async def _post(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
-        """Perform a POST request and raise ``GitHubClientError`` on failure."""
-        try:
-            response = await self._client.post(path, json=json_data)
-        except httpx.HTTPError as exc:
-            detail = str(exc) or exc.__class__.__name__
-            raise GitHubClientError(f"GitHub POST request failed: {detail}") from exc
-
-        if response.status_code >= 400:
-            message = "GitHub API POST request failed."
-            try:
-                message = response.json().get("message", message)
-            except ValueError:
-                pass
-            status_code = response.status_code if response.status_code in {400, 401, 403, 404} else 502
-            raise GitHubClientError(message=message, status_code=status_code)
-
-        return response.json()
+        return await self._request("POST", path, json_data=json_data)
 
     async def _patch(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
-        """Perform a PATCH request and raise ``GitHubClientError`` on failure."""
-        try:
-            response = await self._client.patch(path, json=json_data)
-        except httpx.HTTPError as exc:
-            detail = str(exc) or exc.__class__.__name__
-            raise GitHubClientError(f"GitHub PATCH request failed: {detail}") from exc
-
-        if response.status_code >= 400:
-            message = "GitHub API PATCH request failed."
-            try:
-                message = response.json().get("message", message)
-            except ValueError:
-                pass
-            status_code = response.status_code if response.status_code in {400, 401, 403, 404} else 502
-            raise GitHubClientError(message=message, status_code=status_code)
-
-        return response.json()
+        return await self._request("PATCH", path, json_data=json_data)
 
     # -- Write operations (auto-reply / auto-fix) ---------------------------
 

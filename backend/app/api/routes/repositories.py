@@ -23,7 +23,14 @@ async def sync_repository(payload: SyncRepositoryRequest) -> RepositorySnapshot:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except GitHubClientError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+        messages = [exc.message]
+        if exc.status_code == 502:
+            messages.append("提示：检查是否已设置 GITHUB_TOKEN（无 token 时每小时限 60 次请求）")
+        elif exc.status_code == 403:
+            messages.append("提示：GitHub 返回 403，可能缺少权限或 token 无效")
+        elif exc.status_code == 504:
+            messages.append("提示：请求 GitHub API 超时，仓库可能过大或网络不稳定")
+        raise HTTPException(status_code=exc.status_code, detail=" | ".join(messages)) from exc
 
     repository_store.save(snapshot)
     return snapshot
