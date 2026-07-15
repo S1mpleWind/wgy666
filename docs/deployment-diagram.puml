@@ -1,0 +1,88 @@
+@startuml deployment
+!pragma diagram_type deployment
+
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName "sans-serif"
+skinparam defaultFontSize 12
+
+skinparam component {
+    FontSize 12
+    BorderColor #4A5D7A
+    FontColor #2B3A55
+    BackgroundColor #E8EDF5
+    Shadowing false
+    BorderThickness 1
+}
+skinparam node {
+    BorderColor #3A6EA5
+    FontColor #1E3A5F
+    BackgroundColor #D6E4F0
+    FontSize 13
+    BorderThickness 2
+    Shadowing false
+}
+skinparam database {
+    FontSize 12
+    BorderColor #2E6B4F
+    FontColor #1A4A36
+    BackgroundColor #D4EDDA
+    Shadowing false
+}
+skinparam arrow {
+    FontSize 10
+    FontColor #495057
+    Thickness 1.5
+}
+
+left to right direction
+
+title IssueScope 物理部署架构图
+caption A8 GitHub仓库问答与Issue分析系统
+
+' ====================== 用户终端 ======================
+
+node "用户终端\n(PC/笔记本)" as CLIENT #F0F4FF {
+    component "浏览器\n前端 SPA" as BROWSER
+}
+
+' ====================== 应用服务器 ======================
+
+node "应用服务器\n(Ubuntu 22.04)" as APP #FFF5E6 {
+    component "Nginx\n反向代理" as NGINX
+    component "FastAPI\n后端服务" as BACKEND
+    component "API 路由\n+ 业务服务" as SERVICES
+    component "AI Agent\n引擎" as AGENT
+}
+
+' ====================== 数据库服务器 ======================
+
+node "数据库服务器\n(Ubuntu 22.04)" as DB #EDF7ED {
+    database "PostgreSQL\n+ pgvector" as PGSQL
+}
+
+' ====================== 外部服务 ======================
+
+node "外部服务" as EXT #FFF0F0 {
+    component "GitHub\nREST API" as GHAPI
+    component "GitHub\nWebhook" as GHWH
+    component "LLM API" as LLMAP
+}
+
+' ====================== 连接关系 ======================
+
+' ── 水平主干：用户 → 应用服务器 → 数据库 ──
+BROWSER -right-> NGINX : HTTPS :443
+NGINX -right-> BACKEND : 代理至 :8000
+BACKEND -right-> SERVICES :
+SERVICES -right-> PGSQL : SQLAlchemy ORM
+
+' ── 应用服务器内部纵向 ──
+BACKEND -down-> AGENT : 委派问答
+AGENT -up-> SERVICES : 调用工具查询
+
+' ── 外部服务 ──
+SERVICES -up-> GHAPI : REST API
+GHWH -down-> BACKEND : Webhook事件
+AGENT -right-> LLMAP : Chat Completions
+
+@enduml

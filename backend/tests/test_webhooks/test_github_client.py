@@ -83,3 +83,75 @@ class TestGitHubClientInternals:
         """_put is a callable internal method."""
         client = GitHubClient()
         assert callable(client._put)
+
+    def test_create_or_update_file_base64_encodes_content(self):
+        """create_or_update_file base64-encodes content and calls _put with correct path."""
+        import asyncio
+        import base64
+
+        client = GitHubClient()
+        ref = RepositoryRef(owner="owner", name="repo")
+
+        captured_path = None
+        captured_data = None
+
+        async def fake_put(path, json_data=None):
+            nonlocal captured_path, captured_data
+            captured_path = path
+            captured_data = json_data
+            return {"content": {"sha": "abc123"}}
+
+        client._put = fake_put  # type: ignore[method-assign]
+
+        result = asyncio.run(
+            client.create_or_update_file(
+                ref=ref,
+                path="src/main.py",
+                content="print('hello')",
+                commit_message="Add main.py",
+                branch="fix-bug",
+                sha="oldsha123",
+            )
+        )
+
+        # Verify path
+        assert "owner" in captured_path
+        assert "repo" in captured_path
+        assert "src/main.py" in captured_path
+
+        # Verify JSON payload
+        assert captured_data["message"] == "Add main.py"
+        assert captured_data["branch"] == "fix-bug"
+        assert captured_data["sha"] == "oldsha123"
+
+        # Verify content was base64-encoded
+        decoded = base64.b64decode(captured_data["content"]).decode("utf-8")
+        assert decoded == "print('hello')"
+
+    def test_create_or_update_file_without_sha(self):
+        """create_or_update_file works without sha (new file creation)."""
+        import asyncio
+
+        client = GitHubClient()
+        ref = RepositoryRef(owner="o", name="r")
+
+        captured_data = {}
+
+        async def fake_put(path, json_data=None):
+            captured_data.update(json_data or {})
+            return {}
+
+        client._put = fake_put  # type: ignore[method-assign]
+
+        asyncio.run(
+            client.create_or_update_file(
+                ref=ref,
+                path="new.txt",
+                content="hello",
+                commit_message="Create new.txt",
+                branch="main",
+            )
+        )
+
+        assert captured_data["message"] == "Create new.txt"
+        assert "sha" not in captured_data
