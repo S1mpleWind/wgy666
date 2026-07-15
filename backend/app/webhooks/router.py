@@ -29,7 +29,7 @@ async def github_webhook(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
-    record = dispatch_event(x_github_event, payload, delivery_id=x_github_delivery)
+    record = await dispatch_event(x_github_event, payload, delivery_id=x_github_delivery)
 
     # ── Auto-reply (non-blocking, best-effort) ───────────────────────
     if record and record.classification:

@@ -1,5 +1,6 @@
 """Unit tests for webhook handler functions."""
 
+import asyncio
 import hashlib
 import hmac
 from datetime import datetime, timezone
@@ -84,7 +85,7 @@ def test_handle_bug_issue():
         body="Getting an exception traceback when saving",
         labels=["bug"],
     )
-    record = handle_issue_event(payload, delivery_id="del-001")
+    record = asyncio.run(handle_issue_event(payload, delivery_id="del-001"))
     assert record is not None
     assert record.event_id == "del-001"
     assert record.action == "opened"
@@ -103,7 +104,7 @@ def test_handle_question_issue():
         body="I need help with setup",
         labels=["question"],
     )
-    record = handle_issue_event(payload, delivery_id="del-002")
+    record = asyncio.run(handle_issue_event(payload, delivery_id="del-002"))
     assert record is not None
     assert record.classification is not None
     assert record.classification.category.value == "question"
@@ -113,13 +114,13 @@ def test_handle_issue_ignores_non_opened():
     """Non-'opened' actions are silently ignored."""
     for action in ("edited", "closed", "reopened", "labeled"):
         payload = _make_issue_payload(action=action, number=103)
-        assert handle_issue_event(payload) is None, f"action={action} should be ignored"
+        assert asyncio.run(handle_issue_event(payload)) is None, f"action={action} should be ignored"
 
 
 def test_handle_issue_missing_repo():
     """Missing repository info returns None."""
     payload = {"action": "opened", "issue": {"number": 1, "title": "x"}}
-    assert handle_issue_event(payload) is None
+    assert asyncio.run(handle_issue_event(payload)) is None
 
 
 def test_handle_issue_empty_body_gets_info_needed_boost():
@@ -130,7 +131,7 @@ def test_handle_issue_empty_body_gets_info_needed_boost():
         body=None,
         labels=[],
     )
-    record = handle_issue_event(payload)
+    record = asyncio.run(handle_issue_event(payload))
     assert record is not None
     # The classifier gives INFO_NEEDED a boost for empty body.
     assert record.classification is not None
@@ -145,7 +146,7 @@ def test_stores_event_in_memory():
         body="Would be great to have dark mode support",
         labels=["enhancement"],
     )
-    handle_issue_event(payload, delivery_id="del-store-200")
+    asyncio.run(handle_issue_event(payload, delivery_id="del-store-200"))
     assert len(webhook_event_store) == prev_count + 1
     stored = webhook_event_store.get("del-store-200")
     assert stored is not None
@@ -158,7 +159,7 @@ def test_stores_event_in_memory():
 
 def test_dispatch_issues_event():
     """dispatch_event routes 'issues' events correctly."""
-    record = dispatch_event("issues", _make_issue_payload(number=301), delivery_id="del-301")
+    record = asyncio.run(dispatch_event("issues", _make_issue_payload(number=301), delivery_id="del-301"))
     assert record is not None
     assert record.issue_number == 301
 
@@ -166,7 +167,7 @@ def test_dispatch_issues_event():
 def test_dispatch_unknown_event_returns_none():
     """Unknown event types are silently ignored."""
     for event in ("ping", "push", "pull_request", "star", "watch"):
-        record = dispatch_event(event, {})
+        record = asyncio.run(dispatch_event(event, {}))
         assert record is None, f"event={event} should return None"
 
 
