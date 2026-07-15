@@ -1,9 +1,11 @@
 """Async HTTP client for the GitHub REST API.
 
 Wraps ``httpx.AsyncClient`` with GitHub-specific authentication, error
-handling, and convenience methods for repository data fetching.
+handling, exponential-backoff retries for transient failures, and
+convenience methods for repository data fetching.
 """
 
+import asyncio
 import base64
 from typing import Any
 from urllib.parse import quote
@@ -21,6 +23,64 @@ class GitHubClientError(Exception):
         self.message = message
         self.status_code = status_code
         super().__init__(message)
+
+
+# -- Retry helpers ----------------------------------------------------------
+
+
+def _is_transient(status_code: int) -> bool:
+    """True for status codes where retrying a GET request is safe."""
+    return status_code in {429, 502, 503, 504} or status_code >= 500
+
+
+async def _retry_with_backoff(
+    coro_factory,
+    max_retries: int,
+) -> Any:
+    """Call *coro_factory* up to *max_retries*+1 times with exponential backoff.
+
+    *coro_factory* must be a zero-argument callable that returns an awaitable.
+    Retries happen only for transient HTTP errors and network-level failures
+    (``httpx.HTTPError``). Non-transient errors (4xx except 429) are raised
+    immediately.
+    """
+    last: BaseException | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = await coro_factory()
+        except httpx.HTTPError as exc:
+            last = exc
+            if attempt < max_retries:
+                delay = 2 ** attempt
+                await asyncio.sleep(delay)
+            continue
+
+        if response.status_code < 400:
+            return response
+
+        status = response.status_code
+        if not _is_transient(status) or attempt == max_retries:
+            message = "GitHub API request failed."
+            try:
+                message = response.json().get("message", message)
+            except ValueError:
+                pass
+            sc = status if status in {400, 401, 403, 404} else 502
+            raise GitHubClientError(message=message, status_code=sc)
+
+        delay = 2 ** attempt
+        if status == 429:  # rate-limited — use Retry-After if present
+            retry_after = response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    delay = float(retry_after)
+                except ValueError:
+                    pass
+        await asyncio.sleep(delay)
+
+    # If we exit the loop, last is an httpx.HTTPError
+    detail = str(last) or last.__class__.__name__
+    raise GitHubClientError(f"GitHub request failed after {max_retries} retries: {detail}")
 
 
 class GitHubClient:
@@ -148,26 +208,18 @@ class GitHubClient:
     # -- Internal -----------------------------------------------------------
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        """Perform a GET request and raise ``GitHubClientError`` on failure."""
-        try:
-            response = await self._client.get(path, params=params)
-        except httpx.HTTPError as exc:
-            detail = str(exc) or exc.__class__.__name__
-            raise GitHubClientError(f"GitHub request failed: {detail}") from exc
+        """GET with exponential-backoff retries for transient failures."""
 
-        if response.status_code >= 400:
-            message = "GitHub API request failed."
-            try:
-                message = response.json().get("message", message)
-            except ValueError:
-                pass
-            status_code = response.status_code if response.status_code in {400, 401, 403, 404} else 502
-            raise GitHubClientError(message=message, status_code=status_code)
+        def _call():
+            return self._client.get(path, params=params)
 
+        response = await _retry_with_backoff(
+            _call, settings.github_request_retries
+        )
         return response.json()
 
     async def _post(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
-        """Perform a POST request and raise ``GitHubClientError`` on failure."""
+        """POST — *no retry* (writing twice is unsafe)."""
         try:
             response = await self._client.post(path, json=json_data)
         except httpx.HTTPError as exc:
@@ -186,7 +238,7 @@ class GitHubClient:
         return response.json()
 
     async def _patch(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
-        """Perform a PATCH request and raise ``GitHubClientError`` on failure."""
+        """PATCH — *no retry* (writing twice is unsafe)."""
         try:
             response = await self._client.patch(path, json=json_data)
         except httpx.HTTPError as exc:

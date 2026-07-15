@@ -60,10 +60,21 @@ class RepositorySyncService:
             pulls = await client.get_pull_requests(ref, request.max_pull_requests)
             commits = await client.get_commits(ref, request.max_commits)
 
+        # -- File classification + source content from git clone --------------
         async with GitCloneService(clone_url) as git_clone:
+            # Channel A: random sample for accurate category statistics
             tree = git_clone.walk_files(limit=request.max_tree_items)
-            files, file_categories = self.file_classifier.classify_many(tree, request.max_tree_items)
-            source_contents = self._read_source_contents(git_clone, files)
+            files, file_categories = self.file_classifier.classify_many(
+                tree, request.max_tree_items
+            )
+
+            # Channel B: full scan of all indexable files for RAG vectorization
+            source_contents = self._clone_all_indexable_files(
+                git_clone,
+                self.file_classifier,
+                max_files=settings.rag_max_source_files,
+                max_bytes=settings.rag_max_source_file_bytes,
+            )
 
         classified_issues = [self._map_issue(issue) for issue in issues]
         issue_categories = self.issue_classifier.summarize(
@@ -100,51 +111,75 @@ class RepositorySyncService:
             synced_at=datetime.now(timezone.utc),
         )
 
-    def _read_source_contents(
+    # -- Source content extraction (git clone) --------------------------------
+
+    def _clone_all_indexable_files(
         self,
         git_clone: GitCloneService,
-        files: list[ClassifiedFile],
+        classifier: FileClassifier,
+        max_files: int,
+        max_bytes: int,
     ) -> list[RepositoryFileContent]:
-        """Read source files from the local git clone for storage and RAG indexing.
+        """Walk the full clone and read every indexable file for RAG vectorization.
 
-        All file categories except ASSET (images/binaries) and DATA
-        (large datasets) are indexed. The per-call cap is controlled by
-        ``rag_max_source_files`` and ``rag_max_source_file_bytes``.
+        Unlike the sampled *files* list used for category statistics, this
+        scan is exhaustive — it collects **all** candidates first, then
+        selects up to *max_files* items with a priority that favours source
+        code and tests over documentation and configuration.
         """
-        indexable_categories = {
+        excluded = {FileCategory.ASSET, FileCategory.DATA}
+        priority_order = [
             FileCategory.SOURCE,
             FileCategory.TEST,
             FileCategory.DOCUMENTATION,
-            FileCategory.DEPENDENCY,
             FileCategory.CONFIGURATION,
             FileCategory.CI_CD,
+            FileCategory.DEPENDENCY,
             FileCategory.BUILD,
             FileCategory.OTHER,
-        }
-        selected = [
-            file
-            for file in files
-            if file.category in indexable_categories
-            and (file.size is None or file.size <= settings.rag_max_source_file_bytes)
-        ][: settings.rag_max_source_files]
+        ]
+        # map category → list of dicts that pass the size filter
+        buckets: dict[FileCategory, list[dict]] = {c: [] for c in priority_order}
 
-        contents: list[RepositoryFileContent] = []
-        for file in selected:
-            content, truncated = git_clone.read_file(
-                file.path,
-                settings.rag_max_source_file_bytes,
-            )
-            if content is None or not content.strip():
+        for item in git_clone.walk_files():  # no limit — full scan
+            path = item["path"]
+            size = item.get("size")
+            if size is not None and size > max_bytes:
                 continue
-            contents.append(
-                RepositoryFileContent(
-                    path=file.path,
-                    category=file.category,
-                    content=content,
-                    size=file.size,
-                    truncated=truncated,
+
+            category = classifier.classify(path)
+            if category in excluded:
+                continue
+
+            buckets.setdefault(category, []).append(item)
+
+        # Fill results by priority, reading file contents on demand.
+        contents: list[RepositoryFileContent] = []
+        seen: set[str] = set()
+
+        for category in priority_order:
+            for item in buckets.get(category, []):
+                path = item["path"]
+                if path in seen:
+                    continue
+                seen.add(path)
+
+                content, truncated = git_clone.read_file(path, max_bytes)
+                if content is None or not content.strip():
+                    continue
+
+                contents.append(
+                    RepositoryFileContent(
+                        path=path,
+                        category=category,
+                        content=content,
+                        size=item.get("size"),
+                        truncated=truncated,
+                    )
                 )
-            )
+                if len(contents) >= max_files:
+                    return contents
+
         return contents
 
     # -- Mapping helpers (GitHub API → Pydantic models) --------------------

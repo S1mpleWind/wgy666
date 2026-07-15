@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     github_api_base_url: str = "https://api.github.com"
     github_api_version: str = "2022-11-28"
     request_timeout_seconds: float = 200
+    github_request_retries: int = Field(
+        default=3,
+        validation_alias="GITHUB_REQUEST_RETRIES",
+        description="Max retries (with exponential backoff) for transient GitHub API failures.",
+    )
 
     # --- Database ---
     database_url: str | None = Field(
