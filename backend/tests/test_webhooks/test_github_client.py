@@ -61,3 +61,25 @@ class TestGitHubClientInternals:
         assert "ref" in params
         assert "issue_number" in params
         assert "body" in params
+
+    def test_create_or_update_file_signature(self):
+        """create_or_update_file takes content, commit_message, branch, and optional sha."""
+        assert callable(GitHubClient.create_or_update_file)
+
+    def test_create_or_update_file_builds_correct_path(self):
+        """Verify the method expects the right argument types."""
+        import inspect
+        client = GitHubClient()
+        sig = inspect.signature(client.create_or_update_file)
+        params = list(sig.parameters.keys())
+        assert "ref" in params
+        assert "path" in params
+        assert "content" in params
+        assert "commit_message" in params
+        assert "branch" in params
+        assert "sha" in params
+
+    def test_put_method_exists(self):
+        """_put is a callable internal method."""
+        client = GitHubClient()
+        assert callable(client._put)

@@ -208,6 +208,9 @@ class GitHubClient:
     async def _patch(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
         return await self._request("PATCH", path, json_data=json_data)
 
+    async def _put(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
+        return await self._request("PUT", path, json_data=json_data)
+
     # -- Write operations (auto-reply / auto-fix) ---------------------------
 
     async def comment_on_issue(self, ref: RepositoryRef, issue_number: int, body: str) -> dict[str, Any]:
@@ -265,4 +268,39 @@ class GitHubClient:
             f"/repos/{ref.owner}/{ref.name}/git/refs",
             json_data={"ref": f"refs/heads/{branch_name}", "sha": sha},
         )
-    #     )
+
+    async def create_or_update_file(
+        self,
+        ref: RepositoryRef,
+        path: str,
+        content: str,
+        commit_message: str,
+        branch: str,
+        sha: str | None = None,
+    ) -> dict[str, Any]:
+        """Create or update a file in the repository.
+
+        Args:
+            path: File path in the repo (e.g. ``src/main.py``).
+            content: UTF-8 file content (will be base64-encoded automatically).
+            commit_message: Git commit message.
+            branch: Target branch name.
+            sha: Required when updating an existing file (get it from the
+                  previous ``get_file_content`` response).
+
+        Requires a GitHub token with ``contents:write`` scope.
+        """
+        import base64
+
+        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        json_data: dict[str, Any] = {
+            "message": commit_message,
+            "content": encoded,
+            "branch": branch,
+        }
+        if sha:
+            json_data["sha"] = sha
+        return await self._put(
+            f"/repos/{ref.owner}/{ref.name}/contents/{quote(path, safe='/')}",
+            json_data=json_data,
+        )

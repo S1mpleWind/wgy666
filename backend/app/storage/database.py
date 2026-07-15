@@ -16,6 +16,8 @@ from sqlalchemy import (
     create_engine,
     text,
 )
+from typing import Any
+
 from sqlalchemy.types import UserDefinedType
 from sqlalchemy.engine import Engine
 
@@ -191,18 +193,32 @@ knowledge_chunks = Table(
 def create_database_engine() -> Engine:
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL is not configured.")
-    return create_engine(
-        settings.database_url,
-        pool_pre_ping=True,
-        future=True,
-        connect_args={"connect_timeout": 10},
-    )
+    kwargs: dict[str, Any] = {
+        "future": True,
+    }
+    if settings.database_url.startswith("postgresql"):
+        kwargs["pool_pre_ping"] = True
+        kwargs["connect_args"] = {"connect_timeout": 10}
+    elif settings.database_url.startswith("sqlite"):
+        kwargs["connect_args"] = {"check_same_thread": False}
+    return create_engine(settings.database_url, **kwargs)
 
 
 def initialize_database(engine: Engine) -> None:
-    """Create tables and enable pgvector for future RAG usage."""
+    """Create all tables. Enables pgvector only when connected to PostgreSQL."""
     with engine.begin() as connection:
-        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        metadata.create_all(connection)
-        connection.execute(text(f"ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS embedding vector({settings.embedding_dimensions})"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops)"))
+        dialect = connection.dialect.name
+        if dialect == "postgresql":
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            metadata.create_all(connection)
+            connection.execute(text(
+                f"ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS "
+                f"embedding vector({settings.embedding_dimensions})"
+            ))
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding "
+                "ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops)"
+            ))
+        else:
+            # SQLite or other dialects — create tables without vector extensions.
+            metadata.create_all(connection)
