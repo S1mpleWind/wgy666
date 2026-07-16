@@ -71,13 +71,13 @@ def verify_signature(payload: bytes, signature_header: str | None, secret: str |
 # Event dispatch
 # ---------------------------------------------------------------------------
 
-def dispatch_event(event: str, payload: dict, delivery_id: str | None = None) -> WebhookEventRecord | None:
+async def dispatch_event(event: str, payload: dict, delivery_id: str | None = None) -> WebhookEventRecord | None:
     """Route a webhook event to the appropriate handler based on event type.
 
     Returns the WebhookEventRecord if the event was handled, None otherwise.
     """
     if event == "issues":
-        return handle_issue_event(payload, delivery_id)
+        return await handle_issue_event(payload, delivery_id)
 
     # Unknown event type — silently ignore (GitHub sends many event types).
     return None
@@ -87,7 +87,7 @@ def dispatch_event(event: str, payload: dict, delivery_id: str | None = None) ->
 # Issue event handler
 # ---------------------------------------------------------------------------
 
-def handle_issue_event(payload: dict, delivery_id: str | None = None) -> WebhookEventRecord | None:
+async def handle_issue_event(payload: dict, delivery_id: str | None = None) -> WebhookEventRecord | None:
     """Process an 'issues' webhook event.
 
     Only acts on ``action == "opened"`` — classifies the issue using the
@@ -114,9 +114,9 @@ def handle_issue_event(payload: dict, delivery_id: str | None = None) -> Webhook
         if isinstance(label, dict) and "name" in label
     ]
 
-    # Classify via the existing rule-based classifier.
+    # Classify via two-stage classifier: rules + LLM fallback.
     classifier = IssueClassifier()
-    classification = classifier.classify(title=title, body=body, labels=labels)
+    classification = await classifier.async_classify(title=title, body=body, labels=labels)
 
     issue_state = issue_data.get("state") or "open"
     issue_author = (

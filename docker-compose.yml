@@ -1,21 +1,21 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: wgy666-postgres
+    container_name: issuescope-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: wgy666
-      POSTGRES_PASSWORD: wgy666
-      POSTGRES_DB: wgy666
+      POSTGRES_USER: issuescope
+      POSTGRES_PASSWORD: issuescope
+      POSTGRES_DB: issuescope
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - issuescope_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U wgy666 -d wgy666"]
+      test: ["CMD-SHELL", "pg_isready -U issuescope -d issuescope"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  postgres_data:
+  issuescope_pg_data:

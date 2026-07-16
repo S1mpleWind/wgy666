@@ -12,9 +12,17 @@ dependencies = [
     "pydantic-settings>=2.14.2",
     "sqlalchemy>=2.0.51",
     "sentence-transformers>=3.0.0",
-    "torch>=2.0.0",
     "uvicorn[standard]>=0.50.1",
+    "torch>=2.13.0",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [

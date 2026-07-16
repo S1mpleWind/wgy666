@@ -30,6 +30,20 @@ source $HOME/.bashrc
 uv --version
 ```
 
+## 3. 数据库配置
+
+可以直接运行`script/setup-db.sh`
+
+1. 数据库运行:
+```bash 
+docker-compose up -d
+```
+这条指令会让 docker 在后台运行
+如果无法pull镜像，可以更换镜像源为`https://docker.1ms.run`等国内镜像
+
+2. 修改`.env`中的 `DATABASE_URL`，否则将回退SQLite的实现并失去rag功能
+
+
 ---
 
 ## 3. 部署后端应用

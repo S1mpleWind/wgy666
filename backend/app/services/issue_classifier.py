@@ -1,11 +1,21 @@
-"""Rule-based issue classifier.
+"""Issue classifier — two-stage: rules first, then LLM fallback.
 
-Categorizes GitHub issues into types (BUG, FEATURE_REQUEST, QUESTION, etc.)
-using keyword matching on title, body, and labels.
+Stage 1 (always): keyword matching on title/body/labels.
+Stage 2 (optional): LLM call when rules are uncertain (UNKNOWN or confidence ≤ 0.6).
+
+Callers use the sync ``classify()`` for pure rules, or ``async_classify()``
+to get LLM-enhanced results when available.
 """
 
-from collections import Counter
+from __future__ import annotations
 
+from collections import Counter
+import json
+import re
+
+from openai import AsyncOpenAI
+
+from app.core.config import settings
 from app.schemas.issue import IssueCategory, IssueClassification
 from app.schemas.repository import CategorySummary
 
@@ -34,12 +44,26 @@ SUGGESTED_ACTIONS: dict[IssueCategory, str] = {
     IssueCategory.UNKNOWN: "Triage manually or send to an LLM-based classifier once that module is enabled.",
 }
 
+# Categories that benefit most from LLM disambiguation.
+_LLM_THRESHOLD = 0.6
+
 
 class IssueClassifier:
-    """Classify an issue into an ``IssueCategory`` using keyword scoring."""
+    """Classify an issue into an ``IssueCategory``.
+
+    Usage::
+
+        # Sync: pure rule-based (fast, no LLM needed)
+        result = classifier.classify(title="Bug: crash", body="...", labels=["bug"])
+
+        # Async: rules + LLM fallback for uncertain cases
+        result = await classifier.async_classify(title="...", body="...", labels=[])
+    """
+
+    # ── Sync: rule-based classification ───────────────────────────────
 
     def classify(self, title: str, body: str | None, labels: list[str]) -> IssueClassification:
-        """Score each category by keyword matches and return the top result.
+        """Score each category by keyword matching and return the top result.
 
         - Keyword matches in labels score 2×.
         - Empty body adds an ``INFO_NEEDED`` signal.
@@ -81,6 +105,115 @@ class IssueClassifier:
             suggested_action=SUGGESTED_ACTIONS[category],
             signals=signals[:8],
         )
+
+    # ── Async: rules + LLM fallback ───────────────────────────────────
+
+    def __init__(self) -> None:
+        self._llm_available = bool(settings.llm_api_key)
+        if self._llm_available:
+            self._client = AsyncOpenAI(
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_api_base_url,
+            )
+
+    async def async_classify(
+        self,
+        title: str,
+        body: str | None,
+        labels: list[str],
+    ) -> IssueClassification:
+        """Two-stage classification: rules → LLM fallback when uncertain.
+
+        When the rule-based result is UNKNOWN or its confidence is
+        ≤``_LLM_THRESHOLD``, and the LLM is configured, the classifier
+        calls an OpenAI-compatible model to re-classify the issue.
+        """
+        # Stage 1: rules.
+        rule_result = self.classify(title, body, labels)
+
+        # Stage 2: LLM fallback if rules are uncertain.
+        needs_llm = (
+            self._llm_available
+            and (
+                rule_result.category == IssueCategory.UNKNOWN
+                or rule_result.confidence <= _LLM_THRESHOLD
+            )
+        )
+        if not needs_llm:
+            return rule_result
+
+        llm_result = await self._llm_classify(title, body, labels)
+        return llm_result if llm_result is not None else rule_result
+
+    async def _llm_classify(
+        self,
+        title: str,
+        body: str | None,
+        labels: list[str],
+    ) -> IssueClassification | None:
+        """Ask the LLM to classify the issue. Returns ``None`` on failure."""
+        categories_str = ", ".join(c.value for c in IssueCategory)
+        prompt = (
+            f"Classify this GitHub issue into exactly one category: {categories_str}.\n\n"
+            f"Title: {title}\n"
+            f"Body: {body or '(empty)'}\n"
+            f"Labels: {', '.join(labels) if labels else '(none)'}\n\n"
+            "Respond in JSON only:\n"
+            '{"category": "<category>", "confidence": 0.0-1.0, "reason": "<brief reason>", '
+            '"signals": ["<key evidence>"]}\n'
+            "confidence must be >= 0.5 if you are sure, < 0.5 if uncertain."
+        )
+
+        try:
+            completion = await self._client.chat.completions.create(
+                model=settings.llm_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an issue triage assistant. Classify GitHub issues "
+                            "with precision. Respond in JSON only, no markdown."
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=300,
+                response_format={"type": "json_object"},
+            )
+        except Exception:
+            return None
+
+        raw = (completion.choices[0].message.content or "").strip()
+        if not raw:
+            return None
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+
+        category_str = (data.get("category") or "").strip().lower()
+        try:
+            category = IssueCategory(category_str)
+        except ValueError:
+            return None
+
+        confidence = min(1.0, max(0.0, float(data.get("confidence", 0.5))))
+        signals = data.get("signals", [])
+        if not isinstance(signals, list):
+            signals = []
+        signals = [str(s) for s in signals[:8]]
+
+        return IssueClassification(
+            category=category,
+            confidence=round(confidence, 2),
+            reason=data.get("reason", f"LLM classified as {category.value}.") or "",
+            suggested_action=SUGGESTED_ACTIONS.get(category, ""),
+            signals=signals,
+        )
+
+    # ── Summary helper ────────────────────────────────────────────────
 
     def summarize(self, categories: list[IssueCategory]) -> list[CategorySummary]:
         """Aggregate a list of categories into a sorted summary (most frequent first)."""

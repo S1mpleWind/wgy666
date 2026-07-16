@@ -214,27 +214,32 @@ class GitHubClient:
         json_data: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> Any:
-        """Execute an HTTP request and raise ``GitHubClientError`` with full detail on failure."""
+        """Execute an HTTP request with retry for transient failures."""
         method_label = method.upper()
-        try:
-            response = await self._client.request(method, path, json=json_data, params=params)
-        except httpx.TimeoutException:
-            raise GitHubClientError(
-                f"[{method_label}] GitHub API timed out after {settings.request_timeout_seconds}s: {path}",
-                status_code=504,
-            )
-        except httpx.HTTPError as exc:
-            detail = str(exc) or exc.__class__.__name__
-            raise GitHubClientError(f"[{method_label}] GitHub API connection error on {path}: {detail}") from exc
+        max_retries = 3
 
+        async def _call():
+            return await self._client.request(method, path, json=json_data, params=params)
+
+        try:
+            response = await _retry_with_backoff(_call, max_retries)
+        except GitHubClientError:
+            raise
+        except Exception as exc:
+            detail = str(exc) or exc.__class__.__name__
+            raise GitHubClientError(
+                f"[{method_label}] GitHub API request failed on {path}: {detail}"
+            ) from exc
+
+        # Build detailed error message for non-2xx responses.
         if response.status_code >= 400:
             try:
                 body = response.json()
                 gh_message = body.get("message", "")
             except ValueError:
+                body = {}
                 gh_message = ""
 
-            # Try to extract rate limit info.
             rate_remaining = response.headers.get("x-ratelimit-remaining")
             rate_reset = response.headers.get("x-ratelimit-reset")
 
@@ -250,16 +255,12 @@ class GitHubClient:
                 parts.append(f"rate resets at {reset_time.isoformat()}")
 
             if method_label in ("POST", "PATCH") and response.status_code in (400, 422):
-                # Validation error — include response body detail if available.
                 if isinstance(body, dict) and "errors" in body:
                     parts.append(f"errors: {body['errors']}")
 
-            status_code = response.status_code if response.status_code in {400, 401, 403, 404, 422, 429} else 502
-            raise GitHubClientError(message=" | ".join(parts), status_code=status_code)
+            sc = response.status_code if response.status_code in {400, 401, 403, 404, 422, 429} else 502
+            raise GitHubClientError(message=" | ".join(parts), status_code=sc)
 
-        response = await _retry_with_backoff(
-            _call, settings.github_request_retries
-        )
         return response.json()
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
