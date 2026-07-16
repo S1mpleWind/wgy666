@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm'
 import './App.css'
 
 import { askAssistant, fetchFileContent as fetchFileContentApi, fetchWebhookConfig, fetchWebhookEventDetail, fetchWebhookEvents, syncRepository } from './api'
-import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, RepositoryFileContent, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
+import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, GitHubIssue, RepositoryFileContent, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
 import { ProjectStructureDetails } from './ProjectStructureDetails'
 import type { AnalysisSection, ProjectStructureAnalysis } from './ProjectStructureDetails'
 /**
@@ -32,9 +32,10 @@ function App() {
   const [webhookEvents, setWebhookEvents] = useState<WebhookEventItem[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [analysisSection, setAnalysisSection] = useState<AnalysisSection | null>(null)
+  const [showIssueDetail, setShowIssueDetail] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<WebhookEventDetail | null>(null)
   const [eventDetailLoading, setEventDetailLoading] = useState(false)
-  const [showIssueDetail, setShowIssueDetail] = useState(false)
+  const [selectedIssue, setSelectedIssue] = useState<GitHubIssue | null>(null)
 
   // -- Notification inbox --------------------------------------------------
 
@@ -300,6 +301,18 @@ function App() {
           </div>
         )}
 
+        {/* ← Synced issue detail modal */}
+        {selectedIssue && (
+          <div className="modal-overlay" onClick={() => setSelectedIssue(null)}>
+            <section className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+              <SyncedIssueModal
+                issue={selectedIssue}
+                onClose={() => setSelectedIssue(null)}
+              />
+            </section>
+          </div>
+        )}
+
         {!snapshot ? (
           <EmptyState isLoading={isLoading} />
         ) : (
@@ -372,12 +385,16 @@ function App() {
             <Panel title="Issues">
               <div className="table">
                 {snapshot.issues.slice(0, 12).map((issue) => (
-                  <a className="table-row issue-row" href={issue.html_url} target="_blank" key={issue.number}>
+                  <button
+                    className="table-row issue-row"
+                    key={issue.number}
+                    onClick={() => setSelectedIssue(issue)}
+                  >
                     <span className="number">#{issue.number}</span>
                     <span className="grow">{issue.title}</span>
                     <span className={`badge ${issue.classification.category}`}>{formatCategory(issue.classification.category)}</span>
                     <span className="confidence">{Math.round(issue.classification.confidence * 100)}%</span>
-                  </a>
+                  </button>
                 ))}
               </div>
             </Panel>
@@ -1104,6 +1121,73 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
       <div className="issue-detail-links">
         <a className="ghost-button" href={ghUrl} target="_blank">
           ↗ 在 GitHub 上查看 #{event.issue_number}
+        </a>
+      </div>
+    </div>
+  )
+}
+
+// ── Synced Issue Detail Modal (from main dashboard) -----------------------
+
+type SyncedIssueModalProps = {
+  issue: GitHubIssue
+  onClose: () => void
+}
+
+function SyncedIssueModal({ issue, onClose }: SyncedIssueModalProps) {
+  const c = issue.classification
+  const ghUrl = issue.html_url
+
+  const categoryIcons: Record<string, string> = {
+    bug: '🐛', feature_request: '💡', question: '❓',
+    documentation: '📖', duplicate: '🔁', info_needed: '📋',
+    invalid: '🚫', maintenance: '🔧', unknown: '🤔',
+  }
+
+  return (
+    <div className="issue-detail">
+      <div className="modal-header">
+        <h3>#{issue.number}</h3>
+        <button className="icon-button" onClick={onClose}>&#x2715;</button>
+      </div>
+
+      <div className="issue-detail-header">
+        <div className="issue-number">
+          #{issue.number} · {issue.state} · {issue.author ?? 'unknown'}
+          {issue.labels.length > 0 && <> · 标签: {issue.labels.join(', ')}</>}
+        </div>
+        <h3>{issue.title}</h3>
+      </div>
+
+      <div className="classification-detail">
+        <h4>
+          {categoryIcons[c.category] ?? '🤔'} {formatCategory(c.category)}
+          <span className={`badge ${c.category}`}>{formatCategory(c.category)}</span>
+          <span className="confidence-text">置信度 {Math.round(c.confidence * 100)}%</span>
+        </h4>
+        <div className="classification-row">
+          <span className="label">分析理由</span>
+          <div className="value"><p>{c.reason}</p></div>
+        </div>
+        <div className="classification-row">
+          <span className="label">置信度</span>
+          <div className="value">
+            <div className="confidence-bar"><span style={{ width: `${Math.round(c.confidence * 100)}%` }} /></div>
+          </div>
+        </div>
+        {c.signals.length > 0 && (
+          <div className="classification-row">
+            <span className="label">识别信号</span>
+            <div className="value">
+              <div className="signal-list">{c.signals.map(s => <span className="signal-tag" key={s}>{s}</span>)}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="issue-detail-links">
+        <a className="ghost-button" href={ghUrl} target="_blank">
+          ↗ 在 GitHub 上查看 #{issue.number}
         </a>
       </div>
     </div>
