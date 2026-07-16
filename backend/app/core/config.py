@@ -41,6 +41,12 @@ class Settings(BaseSettings):
         description="Secret for verifying GitHub webhook HMAC signatures. "
                     "Set to a random string in production; leave empty in dev to skip verification.",
     )
+    public_url: str | None = Field(
+        default=None,
+        validation_alias="PUBLIC_URL",
+        description="Public-facing URL (e.g. https://issuescope.example.com). "
+                    "Webhook config endpoint uses this instead of guessing from headers.",
+    )
 
     # --- LLM / OpenAI-compatible chat completions ---
     llm_api_base_url: str = Field(
