@@ -157,11 +157,12 @@ class IssueClassifier:
             f"Labels: {', '.join(labels) if labels else '(none)'}\n\n"
             "Respond in JSON only:\n"
             '{"category": "<category>", "confidence": 0.0-1.0, '
-            '"reason": "<brief reason>", '
+            '"reason": "<brief reason, include duplicate issue# if applicable>", '
             '"signals": ["<key evidence>"], '
             '"auto_reply_draft": "(if this is a question, info_needed, duplicate, '
             'or documentation issue, write a draft reply in Chinese; '
-            'otherwise leave empty)"}\n'
+            'for duplicate, mention which issue it duplicates); '
+            'otherwise leave empty"}\n'
             "confidence must be >= 0.5 if you are sure, < 0.5 if uncertain."
         )
 

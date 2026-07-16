@@ -9,6 +9,7 @@ from app.assistant.tool_registry import RepositoryToolRegistry
 from app.assistant.tools import ToolResult, merge_citations
 from app.core.config import settings
 from app.schemas.assistant import AssistantChatRequest, AssistantChatResponse
+from app.schemas.issue import IssueCategory
 from app.services.repository_query import RepositoryQueryService
 
 
@@ -116,6 +117,93 @@ class AgentHarness:
             tool_calls=[result.call for result in tool_results],
             citations=merge_citations(tool_results),
         )
+
+    async def generate_issue_reply(
+        self,
+        owner: str,
+        name: str,
+        issue_title: str,
+        issue_body: str | None,
+        labels: list[str],
+    ) -> str:
+        """Generate a reply for a GitHub issue using the full tool-calling loop.
+
+        The LLM can search the repository knowledge base (files, README,
+        issues, code structure) to produce an informed reply.
+        """
+        if not settings.llm_api_key:
+            raise AgentHarnessError("LLM_API_KEY is not configured.", status_code=503)
+
+        snapshot, used_cached_data = await self.query.get_snapshot(owner, name, "cache_first")
+        labels_str = ", ".join(labels) if labels else "(none)"
+        body_str = issue_body or "(no body provided)"
+
+        messages: list[dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful open-source project maintainer assistant. "
+                    "A user has filed an issue on the repository. "
+                    "Use the available tools to research the issue, then write "
+                    "a concise, friendly reply in Chinese. "
+                    "For questions, provide guidance from the codebase. "
+                    "For feature requests, acknowledge politely. "
+                    "Keep your reply under 200 words.\n\n"
+                    f"Repository: {snapshot.identity.full_name}\n"
+                    f"Data freshness: {'cached' if used_cached_data else 'fresh'}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"## Issue\n\n"
+                    f"**Title**: {issue_title}\n"
+                    f"**Body**: {body_str}\n"
+                    f"**Labels**: {labels_str}\n\n"
+                    "Research and reply to this issue."
+                ),
+            },
+        ]
+
+        max_rounds = max(1, settings.assistant_max_tool_rounds)
+        for round_index in range(max_rounds):
+            completion = await self.client.chat.completions.create(
+                model=settings.llm_model,
+                messages=messages,
+                tools=self.registry.openai_tools(),
+                tool_choice="auto",
+            )
+
+            assistant_message = completion.choices[0].message
+            tool_calls = assistant_message.tool_calls or []
+
+            if not tool_calls:
+                return assistant_message.content or ""
+
+            messages.append(assistant_message.model_dump(exclude_none=True))
+            for tool_call in tool_calls:
+                result = self.registry.execute(
+                    tool_call.function.name,
+                    tool_call.function.arguments,
+                    snapshot,
+                )
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result.content,
+                })
+
+            if round_index == max_rounds - 1:
+                messages.append({
+                    "role": "system",
+                    "content": "Tool rounds exhausted. Give the best final answer.",
+                })
+
+        final = await self.client.chat.completions.create(
+            model=settings.llm_model,
+            messages=messages,
+        )
+        return final.choices[0].message.content or ""
     def _build_initial_messages(
         self,
         request: AssistantChatRequest,

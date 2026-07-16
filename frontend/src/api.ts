@@ -228,6 +228,20 @@ export async function fetchWebhookEventDetail(eventId: string): Promise<WebhookE
   return response.json()
 }
 
+/** Post an auto-reply for a webhook event via AgentHarness. */
+export async function postWebhookReply(eventId: string): Promise<{ status: string; reply_text: string; comment_url: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/reply`, {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to post reply: ${response.status}`)
+  }
+
+  return response.json()
+}
+
 /** Fetch all synced file contents for a repository. */
 export async function fetchFileContents(owner: string, name: string): Promise<RepositoryFileContent[]> {
   const response = await fetch(

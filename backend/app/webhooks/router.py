@@ -2,8 +2,6 @@ from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.core.config import settings
 from app.schemas.issue import IssueClassification
-from app.services.auto_fix import AutoFixService
-from app.webhooks.auto_reply import IssueAutoReplyService
 from app.webhooks.handler import dispatch_event, verify_signature, webhook_event_store
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -33,60 +31,12 @@ async def github_webhook(
 
     record = await dispatch_event(x_github_event, payload, delivery_id=x_github_delivery)
 
-    # ── Auto-reply (non-blocking, best-effort) ───────────────────────
-    if record and record.classification:
-        category = record.classification.category.value
-        # Only auto-reply to question / info_needed / documentation issues
-        if category in {"question", "info_needed", "documentation", "feature_request"}:
-            try:
-                auto_reply = IssueAutoReplyService()
-                result = await auto_reply.generate_reply(
-                    owner=record.repository.split("/")[0],
-                    name=record.repository.split("/")[1],
-                    issue_title=record.issue_title,
-                    issue_body=record.raw_payload.get("issue", {}).get("body"),
-                    labels=record.issue_labels,
-                )
-                if result and result.used_llm:
-                    from app.services.github_client import GitHubClient
-                    from app.services.repository_url import parse_github_repository_url
-                    ref = parse_github_repository_url(
-                        f"https://github.com/{record.repository}"
-                    )
-                    async with GitHubClient() as gh:
-                        await gh.comment_on_issue(ref, record.issue_number, result.reply_text)
-            except Exception:
-                # Auto-reply is best-effort; never break the webhook flow.
-                pass
-
-    # ── Auto-fix for bug issues (non-blocking, best-effort) ─────────
-    if record and record.classification:
-        category = record.classification.category.value
-        if category == "bug":
-            try:
-                fixer = AutoFixService()
-                result = await fixer.fix_issue(
-                    owner=record.repository.split("/")[0],
-                    name=record.repository.split("/")[1],
-                    issue_number=record.issue_number,
-                    issue_title=record.issue_title,
-                    issue_body=record.raw_payload.get("issue", {}).get("body"),
-                    labels=record.issue_labels,
-                )
-                if result.success:
-                    from app.services.github_client import GitHubClient
-                    from app.services.repository_url import parse_github_repository_url
-                    ref = parse_github_repository_url(
-                        f"https://github.com/{record.repository}"
-                    )
-                    async with GitHubClient() as gh:
-                        await gh.comment_on_issue(
-                            ref, record.issue_number,
-                            f"🤖 自动修复 PR 已创建: {result.pr_url}",
-                        )
-            except Exception:
-                # Auto-fix is best-effort; never break the webhook flow.
-                pass
+    # NOTE: Auto-reply is NOT posted automatically. The frontend shows
+    # the classification + auto_reply_draft for review. When the user
+    # clicks "confirm reply", a separate POST request generates the
+    # final reply via AgentHarness and posts it to GitHub.
+    #
+    # See: POST /api/webhooks/events/{event_id}/reply
 
     # GitHub expects a 2xx response quickly.
     return {"status": "ok"}
@@ -165,6 +115,50 @@ async def get_webhook_event(event_id: str) -> dict:
         "issue_html_url": issue_data.get("html_url"),
         "classification": _classification_dict(record.classification),
         "received_at": record.received_at.isoformat(),
+    }
+
+
+@router.post("/events/{event_id}/reply")
+async def reply_to_webhook_event(event_id: str) -> dict:
+    """Generate and post an auto-reply for a webhook event using AgentHarness.
+
+    The LLM uses the full tool-calling pipeline (searches files, README,
+    knowledge graph) to research the issue before writing a reply.
+    The reply is posted as a GitHub comment on the original issue.
+    """
+    record = webhook_event_store.get(event_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if not record.classification:
+        raise HTTPException(status_code=400, detail="Event has no classification")
+
+    owner, name = record.repository.split("/", 1)
+
+    from app.assistant.harness import AgentHarness
+    from app.services.github_client import GitHubClient
+    from app.services.repository_url import parse_github_repository_url
+
+    harness = AgentHarness()
+    reply_text = await harness.generate_issue_reply(
+        owner=owner,
+        name=name,
+        issue_title=record.issue_title,
+        issue_body=record.raw_payload.get("issue", {}).get("body"),
+        labels=record.issue_labels,
+    )
+
+    if not reply_text:
+        raise HTTPException(status_code=502, detail="Failed to generate reply")
+
+    ref = parse_github_repository_url(f"https://github.com/{record.repository}")
+    async with GitHubClient() as gh:
+        comment = await gh.comment_on_issue(ref, record.issue_number, reply_text)
+
+    return {
+        "status": "ok",
+        "reply_text": reply_text,
+        "comment_url": comment.get("html_url", ""),
+        "event_id": event_id,
     }
 
 
