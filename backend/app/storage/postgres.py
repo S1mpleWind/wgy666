@@ -297,6 +297,8 @@ class PostgresRepositoryStore:
         connection.execute(delete(knowledge_chunks).where(knowledge_chunks.c.repository_id == repository_id))
         connection.execute(delete(knowledge_nodes).where(knowledge_nodes.c.repository_id == repository_id))
 
+        is_postgres = connection.dialect.name == "postgresql"
+
         if graph.nodes:
             connection.execute(
                 insert(knowledge_nodes),
@@ -328,26 +330,73 @@ class PostgresRepositoryStore:
                 ],
             )
         if graph.chunks:
-            embeddings = EmbeddingService().embed_texts([chunk.content for chunk in graph.chunks])
-            connection.execute(
-                insert(knowledge_chunks),
-                [
-                    {
-                        "repository_id": repository_id,
-                        "chunk_key": chunk.key,
-                        "title": chunk.title,
-                        "content": chunk.content,
-                        "source_type": chunk.source_type,
-                        "source_path": chunk.source_path,
-                        "node_keys": chunk.node_keys,
-                        "metadata_json": chunk.metadata,
-                        "embedding": self._vector_literal(embedding),
-                    }
-                    for chunk, embedding in zip(graph.chunks, embeddings, strict=True)
-                ],
-            )
+            if is_postgres:
+                embeddings = EmbeddingService().embed_texts([chunk.content for chunk in graph.chunks])
+                connection.execute(
+                    insert(knowledge_chunks),
+                    [
+                        {
+                            "repository_id": repository_id,
+                            "chunk_key": chunk.key,
+                            "title": chunk.title,
+                            "content": chunk.content,
+                            "source_type": chunk.source_type,
+                            "source_path": chunk.source_path,
+                            "node_keys": chunk.node_keys,
+                            "metadata_json": chunk.metadata,
+                            "embedding": self._vector_literal(embedding),
+                        }
+                        for chunk, embedding in zip(graph.chunks, embeddings, strict=True)
+                    ],
+                )
+            else:
+                # SQLite — insert without embedding column.
+                connection.execute(
+                    insert(knowledge_chunks),
+                    [
+                        {
+                            "repository_id": repository_id,
+                            "chunk_key": chunk.key,
+                            "title": chunk.title,
+                            "content": chunk.content,
+                            "source_type": chunk.source_type,
+                            "source_path": chunk.source_path,
+                            "node_keys": chunk.node_keys,
+                            "metadata_json": chunk.metadata,
+                        }
+                        for chunk in graph.chunks
+                    ],
+                )
 
     def search_knowledge(self, owner: str, name: str, query: str, limit: int = 5) -> list[dict]:
+        with self.engine.connect() as connection:
+            is_postgres = connection.dialect.name == "postgresql"
+
+        if is_postgres:
+            return self._search_knowledge_pgvector(owner, name, query, limit)
+
+        # SQLite fallback — use keyword matching.
+        from app.services.knowledge_graph import KnowledgeGraphService
+        from app.storage import repository_store as mem_store
+        snapshot = mem_store.get(owner, name)
+        if snapshot is None:
+            return []
+        results = KnowledgeGraphService().search(snapshot, query=query, limit=limit)
+        return [
+            {
+                "chunk_key": r.chunk.key,
+                "title": r.chunk.title,
+                "content": r.chunk.content,
+                "source_type": r.chunk.source_type,
+                "source_path": r.chunk.source_path,
+                "node_keys": r.chunk.node_keys,
+                "metadata_json": r.chunk.metadata,
+                "score": float(r.score),
+            }
+            for r in results
+        ]
+
+    def _search_knowledge_pgvector(self, owner: str, name: str, query: str, limit: int = 5) -> list[dict]:
         embedding = self._vector_literal(EmbeddingService().embed_query(query))
         statement = text(
             """

@@ -16,7 +16,6 @@ from app.storage import repository_store
 
 def test_get_file_contents_empty_when_not_synced():
     """A repo that was never synced returns an empty list."""
-    repository_store._snapshots.clear()
     contents = repository_store.get_file_contents("nonexistent", "repo")
     assert contents == []
 

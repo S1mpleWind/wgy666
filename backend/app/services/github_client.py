@@ -207,54 +207,72 @@ class GitHubClient:
 
     # -- Internal -----------------------------------------------------------
 
-    async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        """GET with exponential-backoff retries for transient failures."""
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Execute an HTTP request and raise ``GitHubClientError`` with full detail on failure."""
+        method_label = method.upper()
+        try:
+            response = await self._client.request(method, path, json=json_data, params=params)
+        except httpx.TimeoutException:
+            raise GitHubClientError(
+                f"[{method_label}] GitHub API timed out after {settings.request_timeout_seconds}s: {path}",
+                status_code=504,
+            )
+        except httpx.HTTPError as exc:
+            detail = str(exc) or exc.__class__.__name__
+            raise GitHubClientError(f"[{method_label}] GitHub API connection error on {path}: {detail}") from exc
 
-        def _call():
-            return self._client.get(path, params=params)
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                gh_message = body.get("message", "")
+            except ValueError:
+                gh_message = ""
+
+            # Try to extract rate limit info.
+            rate_remaining = response.headers.get("x-ratelimit-remaining")
+            rate_reset = response.headers.get("x-ratelimit-reset")
+
+            parts = [f"[{method_label}] GitHub API error (HTTP {response.status_code})"]
+            if gh_message:
+                parts.append(f"message: {gh_message}")
+            parts.append(f"path: {path}")
+            if rate_remaining is not None and rate_remaining == "0":
+                parts.append("API rate limit exceeded — set GITHUB_TOKEN or wait")
+            if rate_reset:
+                import datetime
+                reset_time = datetime.datetime.fromtimestamp(int(rate_reset), tz=datetime.timezone.utc)
+                parts.append(f"rate resets at {reset_time.isoformat()}")
+
+            if method_label in ("POST", "PATCH") and response.status_code in (400, 422):
+                # Validation error — include response body detail if available.
+                if isinstance(body, dict) and "errors" in body:
+                    parts.append(f"errors: {body['errors']}")
+
+            status_code = response.status_code if response.status_code in {400, 401, 403, 404, 422, 429} else 502
+            raise GitHubClientError(message=" | ".join(parts), status_code=status_code)
 
         response = await _retry_with_backoff(
             _call, settings.github_request_retries
         )
         return response.json()
 
+    async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return await self._request("GET", path, params=params)
+
     async def _post(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
-        """POST — *no retry* (writing twice is unsafe)."""
-        try:
-            response = await self._client.post(path, json=json_data)
-        except httpx.HTTPError as exc:
-            detail = str(exc) or exc.__class__.__name__
-            raise GitHubClientError(f"GitHub POST request failed: {detail}") from exc
-
-        if response.status_code >= 400:
-            message = "GitHub API POST request failed."
-            try:
-                message = response.json().get("message", message)
-            except ValueError:
-                pass
-            status_code = response.status_code if response.status_code in {400, 401, 403, 404} else 502
-            raise GitHubClientError(message=message, status_code=status_code)
-
-        return response.json()
+        return await self._request("POST", path, json_data=json_data)
 
     async def _patch(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
-        """PATCH — *no retry* (writing twice is unsafe)."""
-        try:
-            response = await self._client.patch(path, json=json_data)
-        except httpx.HTTPError as exc:
-            detail = str(exc) or exc.__class__.__name__
-            raise GitHubClientError(f"GitHub PATCH request failed: {detail}") from exc
+        return await self._request("PATCH", path, json_data=json_data)
 
-        if response.status_code >= 400:
-            message = "GitHub API PATCH request failed."
-            try:
-                message = response.json().get("message", message)
-            except ValueError:
-                pass
-            status_code = response.status_code if response.status_code in {400, 401, 403, 404} else 502
-            raise GitHubClientError(message=message, status_code=status_code)
-
-        return response.json()
+    async def _put(self, path: str, json_data: dict[str, Any] | None = None) -> Any:
+        return await self._request("PUT", path, json_data=json_data)
 
     # -- Write operations (auto-reply / auto-fix) ---------------------------
 
@@ -313,4 +331,39 @@ class GitHubClient:
             f"/repos/{ref.owner}/{ref.name}/git/refs",
             json_data={"ref": f"refs/heads/{branch_name}", "sha": sha},
         )
-    #     )
+
+    async def create_or_update_file(
+        self,
+        ref: RepositoryRef,
+        path: str,
+        content: str,
+        commit_message: str,
+        branch: str,
+        sha: str | None = None,
+    ) -> dict[str, Any]:
+        """Create or update a file in the repository.
+
+        Args:
+            path: File path in the repo (e.g. ``src/main.py``).
+            content: UTF-8 file content (will be base64-encoded automatically).
+            commit_message: Git commit message.
+            branch: Target branch name.
+            sha: Required when updating an existing file (get it from the
+                  previous ``get_file_content`` response).
+
+        Requires a GitHub token with ``contents:write`` scope.
+        """
+        import base64
+
+        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        json_data: dict[str, Any] = {
+            "message": commit_message,
+            "content": encoded,
+            "branch": branch,
+        }
+        if sha:
+            json_data["sha"] = sha
+        return await self._put(
+            f"/repos/{ref.owner}/{ref.name}/contents/{quote(path, safe='/')}",
+            json_data=json_data,
+        )
