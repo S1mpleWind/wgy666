@@ -49,12 +49,9 @@ async def webhook_config(request: Request) -> dict:
     Exposes the public URL and the configured secret so users can copy
     them into GitHub's Webhook settings page.
     """
-    if settings.public_url:
-        webhook_url = f"{settings.public_url.rstrip('/')}/api/webhooks/github"
-    else:
-        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-        host = request.headers.get("host", request.url.netloc)
-        webhook_url = f"{scheme}://{host}/api/webhooks/github"
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("host", request.url.netloc)
+    webhook_url = f"{scheme}://{host}/api/webhooks/github"
     return {
         "url": webhook_url,
         "secret": settings.github_webhook_secret or "",
