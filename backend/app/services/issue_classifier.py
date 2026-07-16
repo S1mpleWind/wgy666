@@ -82,9 +82,12 @@ class IssueClassifier:
                     signals.append(f"{category.value}:{keyword}")
 
         # Empty-body boost: issue without a body is likely missing information.
+        # When this is the only signal, keep confidence low so the LLM fallback
+        # in ``async_classify()`` gets a chance to analyse the issue properly.
+        empty_body_signals: list[str] = []
         if not (body and body.strip()) and scores[IssueCategory.INFO_NEEDED] == 0:
             scores[IssueCategory.INFO_NEEDED] += 1
-            signals.append("info_needed:empty_body")
+            empty_body_signals = ["info_needed:empty_body"]
 
         if not scores:
             return IssueClassification(
@@ -98,6 +101,11 @@ class IssueClassifier:
         category, score = scores.most_common(1)[0]
         total = sum(scores.values())
         confidence = min(0.95, max(0.35, score / total))
+        # If the only signal was the empty-body heuristic, the classifier has
+        # no real evidence — drop confidence so the LLM fallback can refine.
+        if empty_body_signals and len(scores) == 1:
+            confidence = 0.3
+            signals.extend(empty_body_signals)
         return IssueClassification(
             category=category,
             confidence=round(confidence, 2),

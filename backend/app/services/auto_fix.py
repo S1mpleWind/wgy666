@@ -4,9 +4,10 @@ Orchestrates the end-to-end pipeline for automatically fixing bug
 issues: locate relevant code → generate fix → create branch → commit
 files → open pull request.
 
-This is a **framework stub**. Each step is delegated to a dedicated
-method so that individual stages can be implemented incrementally as
-RAG and LLM code-generation capabilities mature.
+Steps ③④⑤ (create branch → commit files → open PR) are fully
+implemented using the GitHub Contents API. Steps ① (RAG locate) and
+② (LLM code generation) remain as stubs until the code-generation
+prompt is tuned.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.core.config import settings
+from app.services.github_client import GitHubClient
 from app.services.repository_url import RepositoryRef
 
 
@@ -75,83 +77,116 @@ class AutoFixService:
         issue_body: str | None,
         labels: list[str],
     ) -> FixResult:
-        """Full auto-fix pipeline: analyse → generate → branch → commit → PR.
-
-        TODO: Implement each step. Current implementation is a stub
-        that returns a descriptive error until RAG and code-generation
-        are wired up.
-        """
+        """Full auto-fix pipeline: analyse → generate → branch → commit → PR."""
         if not self._llm_available:
             return FixResult(success=False, error="LLM is not configured")
 
         ref = RepositoryRef(owner=owner, name=name)
         branch_name = f"auto-fix/issue-{issue_number}"
 
-        # ── Step 1: Locate relevant source files via RAG ─────────────
-        # TODO: Use KnowledgeGraphService.search() to find files
-        #       related to the bug description.
-        #
-        #   from app.services.knowledge_graph import KnowledgeGraphService
-        #   from app.storage import repository_store
-        #   snapshot = repository_store.get(owner, name)
-        #   if snapshot:
-        #       results = KnowledgeGraphService().search(
-        #           snapshot, query=issue_title, focus="source_code"
-        #       )
-        #       relevant_paths = [r.chunk.source_path for r in results if r.chunk.source_path]
-        #
+        # ── Step ①: Locate relevant source files via RAG ────────────
+        relevant_paths = await self._locate_relevant_files(owner, name, issue_title)
+        if not relevant_paths:
+            return FixResult(
+                success=False,
+                branch_name=branch_name,
+                error="Could not locate relevant source files for this issue. "
+                      "RAG-based code location is not yet implemented.",
+            )
 
-        # ── Step 2: Generate fix code via LLM ────────────────────────
-        # TODO: Send bug description + relevant source code to LLM,
-        #       ask it to produce the fix as a list of FixFileChange.
-        #
-        #   Each FixFileChange contains: path, new content, commit msg, sha
-        #   For new files: sha=None
-        #   For existing files: sha from get_file_content response
-        #
+        # ── Step ②: Generate fix code via LLM ───────────────────────
+        from app.storage import repository_store
 
-        # ── Step 3: Create branch ────────────────────────────────────
-        # TODO: Get the SHA of the default branch HEAD, then:
-        #
-        #   from app.services.github_client import GitHubClient
-        #   async with GitHubClient() as gh:
-        #       # Get latest commit SHA on default branch
-        #       repo = await gh.get_repository(ref)
-        #       branch = repo.get("default_branch") or "main"
-        #       commits = await gh.get_commits(ref, 1)
-        #       sha = commits[0]["sha"]
-        #       await gh.create_branch(ref, branch_name, sha)
-        #
-
-        # ── Step 4: Commit file changes ──────────────────────────────
-        # TODO: For each FixFileChange, call:
-        #
-        #   async with GitHubClient() as gh:
-        #       await gh.create_or_update_file(
-        #           ref, change.path, change.content,
-        #           commit_message=change.commit_message,
-        #           branch=branch_name,
-        #           sha=change.sha,
-        #       )
-        #
-
-        # ── Step 5: Open pull request ────────────────────────────────
-        # TODO:
-        #
-        #   async with GitHubClient() as gh:
-        #       pr = await gh.create_pull_request(
-        #           ref,
-        #           title=f"fix: {issue_title[:72]}",
-        #           head=branch_name,
-        #           base="main",
-        #           body=f"Closes #{issue_number}\n\n{issue_body or ''}",
-        #       )
-        #       return FixResult(success=True, pr_url=pr["html_url"], branch_name=branch_name)
-        #
-
-        return FixResult(
-            success=False,
-            branch_name=branch_name,
-            error="Auto-fix pipeline is not yet implemented. "
-                  "See backend/app/services/auto_fix.py for details.",
+        snapshot = repository_store.get(owner, name)
+        fix_proposal = await self._generate_fix(
+            ref, snapshot, issue_title, issue_body, labels, relevant_paths, branch_name
         )
+        if fix_proposal is None or not fix_proposal.files:
+            return FixResult(
+                success=False,
+                branch_name=branch_name,
+                error="Could not generate fix code. "
+                      "LLM code generation is not yet implemented.",
+            )
+
+        # ── Step ③: Create branch ───────────────────────────────────
+        async with GitHubClient() as gh:
+            repo = await gh.get_repository(ref)
+            default_branch = repo.get("default_branch") or "main"
+            commits = await gh.get_commits(ref, 1)
+            if not commits:
+                return FixResult(success=False, error="No commits found on default branch.")
+            sha = commits[0]["sha"]
+            await gh.create_branch(ref, branch_name, sha)
+
+        # ── Step ④: Commit each file change ─────────────────────────
+        async with GitHubClient() as gh:
+            for change in fix_proposal.files:
+                await gh.create_or_update_file(
+                    ref,
+                    change.path,
+                    change.content,
+                    commit_message=change.commit_message,
+                    branch=branch_name,
+                    sha=change.sha,
+                )
+
+        # ── Step ⑤: Open pull request ───────────────────────────────
+        async with GitHubClient() as gh:
+            pr = await gh.create_pull_request(
+                ref,
+                title=f"fix: {issue_title[:72]}",
+                head=branch_name,
+                base=default_branch,
+                body=f"Closes #{issue_number}\n\n{fix_proposal.pr_body}\n\n"
+                     f"_🤖 Auto-generated by IssueScope_",
+            )
+
+        return FixResult(success=True, pr_url=pr["html_url"], branch_name=branch_name)
+
+    # ── Step ① stub ────────────────────────────────────────────────────
+
+    async def _locate_relevant_files(self, owner: str, name: str, issue_title: str) -> list[str]:
+        """Search the knowledge base for source files related to the bug.
+
+        TODO: Use KnowledgeGraphService to find files relevant to the
+        issue description. For now, returns an empty list to prevent
+        the pipeline from creating an empty PR.
+
+            from app.services.knowledge_graph import KnowledgeGraphService
+            from app.storage import repository_store
+            snapshot = repository_store.get(owner, name)
+            if snapshot:
+                results = KnowledgeGraphService().search(
+                    snapshot, query=issue_title, focus="source_code"
+                )
+                return list(dict.fromkeys(
+                    r.chunk.source_path for r in results if r.chunk.source_path
+                ))
+        """
+        _ = owner, name, issue_title
+        return []
+
+    # ── Step ② stub ────────────────────────────────────────────────────
+
+    async def _generate_fix(
+        self,
+        ref: RepositoryRef,
+        snapshot: object,
+        issue_title: str,
+        issue_body: str | None,
+        labels: list[str],
+        relevant_paths: list[str],
+        branch_name: str,
+    ) -> FixProposal | None:
+        """Send the bug description + relevant source code to the LLM and
+        ask it to produce a fix.
+
+        TODO: Build a prompt with the issue context and relevant source
+        files, call AsyncOpenAI, parse the response into FixFileChange
+        entries. Each FixFileChange.sha can be obtained by calling
+        ``GitHubClient.get_file_content(ref, path, branch, max_bytes)``
+        for existing files.
+        """
+        _ = ref, snapshot, issue_title, issue_body, labels, relevant_paths, branch_name
+        return None
