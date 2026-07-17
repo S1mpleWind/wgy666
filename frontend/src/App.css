@@ -1487,3 +1487,51 @@ button,
   color: #6a747e;
   font-weight: 400;
 }
+
+/* -- Issues summary panel ------------------------------------------------- */
+
+.issues-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.panel-header-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-header-with-actions h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.issues-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.issues-summary-card {
+  background: #f6f8fa;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+
+.issues-summary-card strong {
+  display: block;
+  font-size: 28px;
+  line-height: 1.2;
+  color: #182027;
+}
+
+.issues-summary-card span {
+  font-size: 12px;
+  color: #6a747e;
+  margin-top: 2px;
+}
+
+.issues-summary-card.closed strong {
+  color: #6a747e;
+}

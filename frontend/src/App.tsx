@@ -37,6 +37,7 @@ function App() {
   const [selectedEvent, setSelectedEvent] = useState<WebhookEventDetail | null>(null)
   const [eventDetailLoading, setEventDetailLoading] = useState(false)
   const [selectedIssue, setSelectedIssue] = useState<GitHubIssue | null>(null)
+  const [showIssueOverview, setShowIssueOverview] = useState(false)
 
   // -- Notification inbox --------------------------------------------------
 
@@ -310,6 +311,19 @@ function App() {
           </div>
         )}
 
+        {/* ← Issue overview modal */}
+        {showIssueOverview && snapshot && (
+          <div className="modal-overlay" onClick={() => setShowIssueOverview(false)}>
+            <section className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+              <IssueOverviewModal
+                issues={snapshot.issues}
+                onSelect={(issue) => { setShowIssueOverview(false); setSelectedIssue(issue); }}
+                onClose={() => setShowIssueOverview(false)}
+              />
+            </section>
+          </div>
+        )}
+
         {/* ← Synced issue detail modal */}
         {selectedIssue && (
           <div className="modal-overlay" onClick={() => setSelectedIssue(null)}>
@@ -362,14 +376,25 @@ function App() {
               <Metric icon={<Search size={18} />} label="Indexed Files" value={snapshot.files.length.toLocaleString()} />
             </section>
 
-            {/* Classification breakdowns */}
-            <section className="two-column">
-              <Panel title="Issue 分类">
-                <CategoryBars summaries={snapshot.issue_categories} total={snapshot.issues.filter(i => i.state === 'open').length} />
-              </Panel>
-              <Panel title="文件分类">
-                <CategoryBars summaries={snapshot.file_categories} total={snapshot.files.length} />
-              </Panel>
+            {/* Issues summary panel */}
+            <section className="panel issues-summary">
+              <div className="panel-header-with-actions">
+                <h3>Issues</h3>
+                <button className="ghost-button" onClick={() => setShowIssueOverview(true)}>
+                  详情 ↗
+                </button>
+              </div>
+              <div className="issues-summary-grid">
+                <div className="issues-summary-card">
+                  <strong>{snapshot.issues.filter(i => i.state === 'open').length}</strong>
+                  <span>Open</span>
+                </div>
+                <div className="issues-summary-card closed">
+                  <strong>{snapshot.issues.filter(i => i.state === 'closed').length}</strong>
+                  <span>Closed</span>
+                </div>
+              </div>
+              <CategoryBars summaries={snapshot.issue_categories} total={snapshot.issues.filter(i => i.state === 'open').length} />
             </section>
 
             {/* Language distribution + README */}
@@ -389,24 +414,6 @@ function App() {
                 onOpen={setAnalysisSection}
               />
             )}
-
-            {/* Issue list — only open issues, closed stored for duplicate ref */}
-            <Panel title={`Issues (${snapshot.issues.filter(i => i.state === 'open').length} open)`}>
-              <div className="table">
-                {snapshot.issues.filter(i => i.state === 'open').slice(0, 12).map((issue) => (
-                  <button
-                    className="table-row issue-row"
-                    key={issue.number}
-                    onClick={() => setSelectedIssue(issue)}
-                  >
-                    <span className="number">#{issue.number}</span>
-                    <span className="grow">{issue.title}</span>
-                    <span className={`badge ${issue.classification.category}`}>{formatCategory(issue.classification.category)}</span>
-                    <span className="confidence">{Math.round(issue.classification.confidence * 100)}%</span>
-                  </button>
-                ))}
-              </div>
-            </Panel>
 
             {/* Recent PRs and commits */}
             <section className="two-column">
@@ -1219,6 +1226,51 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
         <a className="ghost-button" href={ghUrl} target="_blank">
           ↗ 在 GitHub 上查看 #{event.issue_number}
         </a>
+      </div>
+    </div>
+  )
+}
+
+// ── Issue Overview Modal (open/closed lists) -----------------------------
+
+function IssueOverviewModal({ issues, onSelect, onClose }: {
+  issues: GitHubIssue[]
+  onSelect: (issue: GitHubIssue) => void
+  onClose: () => void
+}) {
+  const open = issues.filter(i => i.state === 'open')
+  const closed = issues.filter(i => i.state === 'closed')
+
+  return (
+    <div className="issue-detail">
+      <div className="modal-header">
+        <h3>全部 Issues</h3>
+        <button className="icon-button" onClick={onClose}>&#x2715;</button>
+      </div>
+
+      <h4 style={{ margin: '12px 0 6px', fontSize: 14 }}>Open ({open.length})</h4>
+      <div className="table" style={{ marginBottom: 20 }}>
+        {open.map(issue => (
+          <button className="table-row issue-row" key={issue.number} onClick={() => onSelect(issue)}>
+            <span className="number">#{issue.number}</span>
+            <span className="grow">{issue.title}</span>
+            <span className={`badge ${issue.classification.category}`}>{formatCategory(issue.classification.category)}</span>
+            <span className="confidence">{Math.round(issue.classification.confidence * 100)}%</span>
+          </button>
+        ))}
+        {open.length === 0 && <p className="muted" style={{ padding: 12 }}>暂无 open issue</p>}
+      </div>
+
+      <h4 style={{ margin: '12px 0 6px', fontSize: 14 }}>Closed ({closed.length})</h4>
+      <div className="table">
+        {closed.map(issue => (
+          <button className="table-row issue-row" key={issue.number} onClick={() => onSelect(issue)}>
+            <span className="number">#{issue.number}</span>
+            <span className="grow">{issue.title}</span>
+            <span className="muted" style={{ fontSize: 12 }}>{issue.updated_at ? formatDate(issue.updated_at) : ''}</span>
+          </button>
+        ))}
+        {closed.length === 0 && <p className="muted" style={{ padding: 12 }}>暂无 closed issue</p>}
       </div>
     </div>
   )
