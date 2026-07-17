@@ -114,8 +114,12 @@ class GitCloneService:
         max_retries = 3
         last_error: str | None = None
 
+        # Clean up stale workdir from previous failed attempts.
+        if os.path.exists(self._workdir):
+            import shutil
+            shutil.rmtree(self._workdir, ignore_errors=True)
+
         for attempt in range(max_retries + 1):
-            process = await asyncio.create_subprocess_exec(
                 "git",
                 "clone",
                 "--depth",
