@@ -307,56 +307,219 @@
   align-items: start;
 }
 
-.directory-root-row {
+.directory-mindmap {
+  --directory-connector: #b7cde5;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.55fr) minmax(0, 1.45fr);
+  gap: 46px;
+  align-items: center;
+  min-width: 0;
+  min-height: 390px;
+  padding: 14px;
+}
+
+.directory-map-root {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid #9dbce7;
+  border-radius: 8px;
+  background: #eef6ff;
+  padding: 22px 14px;
+  color: #1555a0;
+  text-align: center;
+}
+
+.directory-map-root::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: 46px;
+  border-top: 2px solid var(--directory-connector);
+}
+
+.directory-root-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.directory-map-root strong {
+  max-width: 100%;
+  color: #182027;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.directory-map-root > span:not(.directory-root-icon),
+.directory-map-root small {
+  color: #52606d;
+  font-size: 11px;
+}
+
+.directory-map-branches {
+  position: relative;
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+}
+
+.directory-map-branches::before {
+  content: '';
+  position: absolute;
+  top: 42px;
+  bottom: 42px;
+  left: -24px;
+  border-left: 2px solid var(--directory-connector);
+}
+
+.directory-map-node {
+  --directory-accent: #18794e;
+  --directory-accent-soft: #e8f5ef;
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 6px 11px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 84px;
+  border: 1px solid #d9e3ec;
+  border-left: 3px solid var(--directory-accent);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #2b3640;
+  padding: 12px 13px;
+  text-align: left;
+  box-shadow: 0 6px 16px rgba(21, 37, 54, 0.05);
+}
+
+.directory-map-node::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 24px;
+  border-top: 2px solid var(--directory-connector);
+}
+
+.directory-map-node[data-category='source_code'],
+.directory-map-node[data-category='configuration'],
+.directory-map-node[data-category='dependency'] {
+  --directory-accent: #2d6cdf;
+  --directory-accent-soft: #eaf3ff;
+}
+
+.directory-map-node[data-category='documentation'],
+.directory-map-node[data-category='ci_cd'] {
+  --directory-accent: #18794e;
+  --directory-accent-soft: #e8f5ef;
+}
+
+.directory-map-node:hover,
+.directory-map-node.selected {
+  border-color: #7fa9dc;
+  border-left-color: var(--directory-accent);
+  background: #f8fbff;
+  box-shadow: 0 9px 22px rgba(30, 91, 156, 0.1);
+}
+
+.directory-map-node:focus-visible {
+  outline: 2px solid #2d6cdf;
+  outline-offset: 2px;
+}
+
+.directory-node-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  background: var(--directory-accent-soft);
+  color: var(--directory-accent);
+}
+
+.directory-node-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.directory-node-copy strong,
+.directory-node-copy small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.directory-node-copy small {
+  color: #6a747e;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.directory-node-meta {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+}
+
+.directory-node-meta span {
+  border-radius: 5px;
+  background: #f0f4f7;
+  color: #596673;
+  font-size: 10px;
+  padding: 3px 6px;
+}
+
+.directory-map-empty {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #1555a0;
-  padding: 8px 10px;
-  background: #eef6ff;
-  border-radius: 7px;
-}
-
-.directory-tree {
-  display: grid;
-  padding: 5px 0 0 20px;
-}
-
-.directory-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: 16px 20px minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  min-height: 54px;
-  border-bottom: 1px solid #edf1f5;
-}
-
-.tree-line {
-  align-self: stretch;
-  border-left: 1px solid #c7d5e2;
-  border-bottom: 1px solid #c7d5e2;
-  transform: translateY(-50%);
-}
-
-.directory-row > svg {
-  color: #18794e;
-}
-
-.directory-row > div {
-  display: grid;
-  gap: 2px;
-}
-
-.directory-row small,
-.directory-row > span:last-child {
+  min-height: 70px;
+  border: 1px dashed #c7d5e2;
+  border-radius: 8px;
   color: #6a747e;
-  font-size: 11px;
+  padding: 14px;
+}
+
+.directory-map-empty::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 24px;
+  border-top: 2px solid var(--directory-connector);
 }
 
 .responsibility-list {
   display: grid;
-  gap: 16px;
+  gap: 10px;
+}
+
+.responsibility-list article {
+  border: 1px solid #e0e7ed;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  background: #fbfcfd;
+  padding: 12px;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.responsibility-list article.selected {
+  border-color: #9dbce7;
+  border-left-color: #2d6cdf;
+  background: #eef6ff;
 }
 
 .responsibility-list article > div:first-child {
@@ -369,6 +532,7 @@
   color: #6a747e;
   font-size: 12px;
   text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .responsibility-bar {
@@ -741,6 +905,48 @@
 
   .architecture-map {
     padding: 4px;
+  }
+
+  .directory-mindmap {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    min-height: 0;
+    padding: 2px;
+  }
+
+  .directory-map-root,
+  .directory-map-node {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .directory-map-root {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .directory-map-root strong,
+  .directory-map-root > span:not(.directory-root-icon),
+  .directory-map-root small {
+    grid-column: 2;
+  }
+
+  .directory-root-icon {
+    grid-row: 1 / span 3;
+  }
+
+  .directory-map-root::after,
+  .directory-map-branches::before,
+  .directory-map-node::before,
+  .directory-map-empty::before {
+    display: none;
+  }
+
+  .responsibility-list article > div:first-child {
+    display: grid;
+  }
+
+  .responsibility-list article span {
+    text-align: left;
   }
 
   .architecture-branch {

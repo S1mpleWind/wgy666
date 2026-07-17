@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -239,44 +240,69 @@ function PipelineStep({ number, title, text, last = false }: { number: string; t
 function DirectoryView({ analysis }: { analysis: ProjectStructureAnalysis }) {
   const directories = displayDirectories(analysis)
   const maxCount = Math.max(...directories.map((item) => item.count), 1)
+  const [selectedDirectoryName, setSelectedDirectoryName] = useState<string | null>(directories[0]?.name ?? null)
+  const selectedDirectory = directories.find((directory) => directory.name === selectedDirectoryName) ?? directories[0] ?? null
 
   return (
     <div className="structure-split">
       <section className="structure-panel directory-tree-panel">
         <div className="structure-panel-heading">
-          <div><p>Directory tree</p><h3>仓库目录树</h3></div>
+          <div><p>Directory mind map</p><h3>目录结构思维导图</h3></div>
           <span>{directories.length} 个主要目录</span>
         </div>
-        <div className="directory-root-row">
-          <Folder size={18} aria-hidden="true" />
-          <strong>repository/</strong>
-        </div>
-        <div className="directory-tree">
-          {directories.length === 0 && <p className="muted">暂未识别到主要目录</p>}
-          {directories.map((directory) => (
-            <div className="directory-row" key={directory.name}>
-              <span className="tree-line" />
-              <Folder size={17} aria-hidden="true" />
-              <div>
-                <strong>{directory.name}/</strong>
-                <small>{categoryLabel(directory.mainCategory)}</small>
+        <div className="directory-mindmap">
+          <div className="directory-map-root">
+            <span className="directory-root-icon"><GitBranch size={21} aria-hidden="true" /></span>
+            <strong>repository/</strong>
+            <span>{analysis.analyzedFileCount} 个文件样本</span>
+            <small>{analysis.sourceCount} 个源码文件</small>
+          </div>
+          <div className="directory-map-branches" role="group" aria-label="主要目录节点">
+            {directories.length === 0 && (
+              <div className="directory-map-empty">
+                <Folder size={19} aria-hidden="true" />
+                <span>暂未识别到主要目录</span>
               </div>
-              <span>{directory.count} files</span>
-            </div>
-          ))}
+            )}
+            {directories.map((directory) => {
+              const isSelected = selectedDirectory?.name === directory.name
+              return (
+                <button
+                  aria-pressed={isSelected}
+                  className={`directory-map-node${isSelected ? ' selected' : ''}`}
+                  data-category={directory.mainCategory}
+                  key={directory.name}
+                  type="button"
+                  onClick={() => setSelectedDirectoryName(directory.name)}
+                >
+                  <span className="directory-node-icon"><Folder size={18} aria-hidden="true" /></span>
+                  <span className="directory-node-copy">
+                    <strong>{directoryDisplayName(directory.name)}</strong>
+                    <small>{directoryDescription(directory.name, directory.mainCategory)}</small>
+                  </span>
+                  <span className="directory-node-meta">
+                    <span>{directory.count} 个文件</span>
+                    <span>{categoryLabel(directory.mainCategory)}</span>
+                    {directory.sourceCount > 0 && <span>{directory.sourceCount} 个源码</span>}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       </section>
 
       <section className="structure-panel">
         <div className="structure-panel-heading">
           <div><p>Responsibility inference</p><h3>目录职责推断</h3></div>
+          {selectedDirectory && <span>当前：{directoryDisplayName(selectedDirectory.name)}</span>}
         </div>
         <div className="responsibility-list">
           {directories.length === 0 && <p className="muted">暂无可推断的目录职责</p>}
           {directories.map((directory) => (
-            <article key={directory.name}>
+            <article className={selectedDirectory?.name === directory.name ? 'selected' : ''} key={directory.name}>
               <div>
-                <strong>{directory.name}</strong>
+                <strong>{directoryDisplayName(directory.name)}</strong>
                 <span>{directoryDescription(directory.name, directory.mainCategory)}</span>
               </div>
               <div className="responsibility-bar"><span style={{ width: `${Math.max((directory.count / maxCount) * 100, 8)}%` }} /></div>
@@ -477,6 +503,10 @@ function directoryDescription(name: string, category: string) {
   if (normalized === '.github') return '工作流、Issue 模板与仓库配置'
   if (normalized === '(root)') return '项目级配置和启动文件'
   return `${categoryLabel(category)}相关文件`
+}
+
+function directoryDisplayName(name: string) {
+  return name === '(root)' ? '根目录文件' : `${name}/`
 }
 
 function dependencyEcosystem(path: string) {
