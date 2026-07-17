@@ -449,6 +449,8 @@
   display: grid;
   justify-items: center;
   gap: 7px;
+  min-width: 0;
+  width: 100%;
   border: 1px solid #9dbce7;
   border-radius: 8px;
   background: #eef6ff;
@@ -458,8 +460,13 @@
 }
 
 .dependency-source span {
+  display: block;
+  max-width: 100%;
   color: #6a747e;
   font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dependency-groups {
@@ -479,6 +486,7 @@
 .dependency-groups article span {
   color: #52606d;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .startup-flow {

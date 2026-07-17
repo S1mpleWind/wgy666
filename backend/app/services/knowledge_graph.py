@@ -438,11 +438,17 @@ class KnowledgeGraphService:
 
     def _score_chunk(self, chunk: KnowledgeChunk, query_terms: set[str], focus: str) -> float:
         haystack = f"{chunk.title} {chunk.content} {chunk.source_type} {chunk.metadata}".lower()
+        haystack_terms = set(re.findall(r"[a-z0-9_]+", haystack))
         score = 0.0
         if not query_terms and not focus:
             score = 1.0
         for term in query_terms:
-            if term in haystack:
+            is_path = "/" in term or "." in term
+            matches_word = term in haystack_terms or (
+                len(term) >= 4
+                and any(candidate.startswith(term) for candidate in haystack_terms)
+            )
+            if (is_path and term in haystack) or (not is_path and matches_word):
                 score += 1.0
         if focus and (focus in haystack or focus == chunk.metadata.get("focus")):
             score += 2.0

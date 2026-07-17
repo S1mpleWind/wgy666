@@ -5,8 +5,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './App.css'
 
-import { askAssistant, fetchFileContent as fetchFileContentApi, fetchWebhookConfig, fetchWebhookEventDetail, fetchWebhookEvents, syncRepository } from './api'
-import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, RepositoryFileContent, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
+import { askAssistant, fetchFileContent as fetchFileContentApi, fetchProjectStructure, fetchWebhookConfig, fetchWebhookEventDetail, fetchWebhookEvents, syncRepository } from './api'
+import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, ProjectStructureResponse, RepositoryFileContent, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
 import { ProjectStructureDetails } from './ProjectStructureDetails'
 import type { AnalysisSection, ProjectStructureAnalysis } from './ProjectStructureDetails'
 /**
@@ -32,6 +32,7 @@ function App() {
   const [webhookEvents, setWebhookEvents] = useState<WebhookEventItem[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [analysisSection, setAnalysisSection] = useState<AnalysisSection | null>(null)
+  const [projectAnalysis, setProjectAnalysis] = useState<ProjectStructureAnalysis | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<WebhookEventDetail | null>(null)
   const [eventDetailLoading, setEventDetailLoading] = useState(false)
   const [showIssueDetail, setShowIssueDetail] = useState(false)
@@ -97,11 +98,24 @@ function App() {
     event.preventDefault()
     setIsLoading(true)
     setError(null)
+    setProjectAnalysis(null)
 
     try {
       const result = await syncRepository(form)
       setSnapshot(result)
       setAnalysisSection(null)
+      const fallback = analyzeProject(result)
+      setProjectAnalysis(fallback)
+
+      try {
+        const response = await fetchProjectStructure(result.identity.owner, result.identity.name)
+        setProjectAnalysis(mapProjectAnalysis(response))
+      } catch {
+        setProjectAnalysis({
+          ...fallback,
+          analysisWarning: fallback.analysisWarning ?? '后端项目解析暂不可用，当前显示本地降级结果。',
+        })
+      }
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : '同步失败')
     } finally {
@@ -115,11 +129,6 @@ function App() {
     return Object.entries(snapshot.stats.languages)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-  }, [snapshot])
-
-  const projectAnalysis = useMemo(() => {
-    if (!snapshot) return null
-    return analyzeProject(snapshot)
   }, [snapshot])
 
   useEffect(() => {
@@ -431,14 +440,16 @@ function ProjectAnalysisPanel({ analysis, repositoryName, onOpen }: { analysis: 
     <Panel title="项目结构概览">
       <div className="analysis-layout">
         <div className="analysis-summary">
-          <p className="analysis-kicker">启发式规则解析 · 非 AI 原型</p>
+          <p className="analysis-kicker">
+            {analysis.analysisSource === 'backend' ? '后端规则解析 · 非 AI' : '本地降级解析 · 非 AI'}
+          </p>
           <h4>{analysis.projectType}</h4>
           <p className="analysis-description">
-            基于 GitHub 同步到的目录树、文件类型、依赖文件和 README 信息生成项目结构视图，
-            用于界面原型阶段说明“系统如何帮助开发者理解仓库”。
+            基于同步目录、文件类型、已索引源码和依赖清单生成项目结构视图，
+            为仓库问答、模块理解和 Issue 定位提供上下文。
           </p>
           <p className="analysis-basis">
-            当前基于 {analysis.analyzedFileCount} 个已同步文件样本，统计结果仅代表本次同步范围。
+            当前基于 {analysis.analyzedFileCount} 个去重后的可用文件进行分析。
           </p>
           {analysis.analysisWarning && (
             <div className="analysis-warning" role="status">
@@ -816,12 +827,13 @@ function formatTimeAgo(value: string) {
 function analyzeProject(snapshot: RepositorySnapshot): ProjectAnalysis {
   const files = snapshot.files
   const categoryMap = new Map(snapshot.file_categories.map((item) => [item.category, item.count]))
-  const directoryCounter = new Map<string, { count: number; categories: Map<string, number> }>()
+  const directoryCounter = new Map<string, { count: number; sourceCount: number; categories: Map<string, number> }>()
 
   for (const file of files) {
     const directory = file.path.includes('/') ? file.path.split('/')[0] : '(root)'
-    const current = directoryCounter.get(directory) ?? { count: 0, categories: new Map<string, number>() }
+    const current = directoryCounter.get(directory) ?? { count: 0, sourceCount: 0, categories: new Map<string, number>() }
     current.count += 1
+    if (file.category === 'source_code') current.sourceCount += 1
     current.categories.set(file.category, (current.categories.get(file.category) ?? 0) + 1)
     directoryCounter.set(directory, current)
   }
@@ -829,7 +841,7 @@ function analyzeProject(snapshot: RepositorySnapshot): ProjectAnalysis {
   const topDirectories = Array.from(directoryCounter.entries())
     .map(([name, value]) => {
       const mainCategory = Array.from(value.categories.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'other'
-      return { name, count: value.count, mainCategory }
+      return { name, count: value.count, mainCategory, sourceCount: value.sourceCount }
     })
     .sort((a, b) => b.count - a.count)
     .slice(0, 8)
@@ -852,13 +864,61 @@ function analyzeProject(snapshot: RepositorySnapshot): ProjectAnalysis {
     analysisWarning,
     sourceCount,
     dependencyFiles,
+    dependencyPackages: [],
+    detectedFrameworks: [],
     testFiles,
     docFiles,
     configFiles,
     entryFiles,
     ciFiles,
     topDirectories,
+    analysisSource: 'local_fallback',
   }
+}
+
+function mapProjectAnalysis(response: ProjectStructureResponse): ProjectAnalysis {
+  return {
+    projectType: localizeProjectType(response.project_type),
+    analyzedFileCount: response.analyzed_file_count,
+    analysisWarning: response.analysis_warning ? localizeAnalysisWarning(response.analysis_warning) : null,
+    sourceCount: response.source_count,
+    dependencyFiles: response.dependency_files,
+    dependencyPackages: response.dependency_packages,
+    detectedFrameworks: response.detected_frameworks,
+    testFiles: response.test_files,
+    docFiles: response.doc_files,
+    configFiles: response.config_files,
+    entryFiles: response.entry_files,
+    ciFiles: response.ci_files,
+    topDirectories: response.top_directories.map((item) => ({
+      name: item.name,
+      count: item.count,
+      mainCategory: item.main_category,
+      sourceCount: item.source_count,
+    })),
+    analysisSource: 'backend',
+  }
+}
+
+function localizeProjectType(projectType: string) {
+  const labels: Record<string, string> = {
+    'Full-stack project: Python backend plus web frontend': '全栈项目：Python 后端 + Web 前端',
+    'Python backend or tooling project': 'Python 后端或工具库项目',
+    'Web frontend or Node.js project': 'Web 前端或 Node.js 项目',
+    'Unknown primary stack': '暂未识别主要技术栈',
+  }
+  return labels[projectType] ?? projectType.replace('-first project', ' 为主的项目')
+}
+
+function localizeAnalysisWarning(warning: string) {
+  if (warning.startsWith('GitHub reports ')) {
+    const language = warning.match(/^GitHub reports (.+?) as/)?.[1] ?? '某种语言'
+    return `GitHub 语言统计显示主要语言为 ${language}，但后端没有取得可分析的源码文件。`
+  }
+  if (warning.startsWith('Dependency manifests were found')) {
+    return '已发现依赖清单，但未能解析出具体依赖条目。'
+  }
+  return warning
 }
 
 const WEB_LANGUAGES = new Set(['typescript', 'javascript', 'tsx', 'vue', 'css', 'html'])

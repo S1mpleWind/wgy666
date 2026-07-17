@@ -124,18 +124,21 @@ class RepositorySyncService:
 
         Unlike the sampled *files* list used for category statistics, this
         scan is exhaustive — it collects **all** candidates first, then
-        selects up to *max_files* items with a priority that favours source
-        code and tests over documentation and configuration.
+        selects up to *max_files* items. Small manifests are retained first
+        so project analysis can inspect dependencies before source indexing
+        consumes the available file budget.
         """
         excluded = {FileCategory.ASSET, FileCategory.DATA}
         priority_order = [
+            # Keep small manifests available for project analysis even when a
+            # repository has more source files than the RAG indexing limit.
+            FileCategory.DEPENDENCY,
+            FileCategory.BUILD,
             FileCategory.SOURCE,
             FileCategory.TEST,
             FileCategory.DOCUMENTATION,
             FileCategory.CONFIGURATION,
             FileCategory.CI_CD,
-            FileCategory.DEPENDENCY,
-            FileCategory.BUILD,
             FileCategory.OTHER,
         ]
         # map category → list of dicts that pass the size filter
