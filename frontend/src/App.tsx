@@ -5,8 +5,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './App.css'
 
-import { askAssistant, fetchFileContent as fetchFileContentApi, fetchProjectStructure, fetchWebhookConfig, fetchWebhookEventDetail, fetchWebhookEvents, syncRepository } from './api'
-import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, ProjectStructureResponse, RepositoryFileContent, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
+import { askAssistant, fetchFileContent as fetchFileContentApi, fetchProjectStructure, fetchWebhookConfig, fetchWebhookEventDetail, fetchWebhookEvents, postWebhookReply, syncRepository } from './api'
+import type { AssistantChatMessage, AssistantChatResponse, CategorySummary, ClassifiedFile, GitHubIssue, ProjectStructureResponse, RepositoryFileContent, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
 import { ProjectStructureDetails } from './ProjectStructureDetails'
 import type { AnalysisSection, ProjectStructureAnalysis } from './ProjectStructureDetails'
 /**
@@ -14,7 +14,7 @@ import type { AnalysisSection, ProjectStructureAnalysis } from './ProjectStructu
  */
 
 const defaultForm = {
-  url: 'https://github.com/fastapi/fastapi',
+  url: 'https://github.com/S1mpleWind/wgy666',
   max_issues: 30,
   max_pull_requests: 15,
   max_commits: 12,
@@ -33,9 +33,10 @@ function App() {
   const [eventsLoading, setEventsLoading] = useState(false)
   const [analysisSection, setAnalysisSection] = useState<AnalysisSection | null>(null)
   const [projectAnalysis, setProjectAnalysis] = useState<ProjectStructureAnalysis | null>(null)
+  const [showIssueDetail, setShowIssueDetail] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<WebhookEventDetail | null>(null)
   const [eventDetailLoading, setEventDetailLoading] = useState(false)
-  const [showIssueDetail, setShowIssueDetail] = useState(false)
+  const [selectedIssue, setSelectedIssue] = useState<GitHubIssue | null>(null)
 
   // -- Notification inbox --------------------------------------------------
 
@@ -309,6 +310,18 @@ function App() {
           </div>
         )}
 
+        {/* ← Synced issue detail modal */}
+        {selectedIssue && (
+          <div className="modal-overlay" onClick={() => setSelectedIssue(null)}>
+            <section className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+              <SyncedIssueModal
+                issue={selectedIssue}
+                onClose={() => setSelectedIssue(null)}
+              />
+            </section>
+          </div>
+        )}
+
         {!snapshot ? (
           <EmptyState isLoading={isLoading} />
         ) : (
@@ -352,7 +365,7 @@ function App() {
             {/* Classification breakdowns */}
             <section className="two-column">
               <Panel title="Issue 分类">
-                <CategoryBars summaries={snapshot.issue_categories} total={snapshot.issues.length} />
+                <CategoryBars summaries={snapshot.issue_categories} total={snapshot.issues.filter(i => i.state === 'open').length} />
               </Panel>
               <Panel title="文件分类">
                 <CategoryBars summaries={snapshot.file_categories} total={snapshot.files.length} />
@@ -377,16 +390,20 @@ function App() {
               />
             )}
 
-            {/* Issue list */}
-            <Panel title="Issues">
+            {/* Issue list — only open issues, closed stored for duplicate ref */}
+            <Panel title={`Issues (${snapshot.issues.filter(i => i.state === 'open').length} open)`}>
               <div className="table">
-                {snapshot.issues.slice(0, 12).map((issue) => (
-                  <a className="table-row issue-row" href={issue.html_url} target="_blank" key={issue.number}>
+                {snapshot.issues.filter(i => i.state === 'open').slice(0, 12).map((issue) => (
+                  <button
+                    className="table-row issue-row"
+                    key={issue.number}
+                    onClick={() => setSelectedIssue(issue)}
+                  >
                     <span className="number">#{issue.number}</span>
                     <span className="grow">{issue.title}</span>
                     <span className={`badge ${issue.classification.category}`}>{formatCategory(issue.classification.category)}</span>
                     <span className="confidence">{Math.round(issue.classification.confidence * 100)}%</span>
-                  </a>
+                  </button>
                 ))}
               </div>
             </Panel>
@@ -1073,8 +1090,36 @@ type IssueDetailModalProps = {
 }
 
 function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
+  const [replyStatus, setReplyStatus] = useState<'idle' | 'posting' | 'done' | 'error'>('idle')
+  const [replyUrl, setReplyUrl] = useState('')
   const classification = event.classification
   const ghUrl = `https://github.com/${event.repository}/issues/${event.issue_number}`
+  const cat = classification?.category ?? ''
+
+  async function handleConfirmReply() {
+    setReplyStatus('posting')
+    try {
+      const result = await postWebhookReply(event.event_id)
+      setReplyUrl(result.comment_url)
+      setReplyStatus('done')
+    } catch {
+      setReplyStatus('error')
+    }
+  }
+
+  const categoryLabels: Record<string, { icon: string; title: string }> = {
+    bug:           { icon: '🐛', title: '缺陷报告' },
+    feature_request: { icon: '💡', title: '功能请求' },
+    question:      { icon: '❓', title: '使用咨询' },
+    documentation: { icon: '📖', title: '文档问题' },
+    duplicate:     { icon: '🔁', title: '重复 Issue' },
+    info_needed:   { icon: '📋', title: '信息不足' },
+    invalid:       { icon: '🚫', title: '无效 Issue' },
+    maintenance:   { icon: '🔧', title: '维护事项' },
+    unknown:       { icon: '🤔', title: '未分类' },
+  }
+
+  const labelInfo = categoryLabels[cat]
 
   return (
     <div className="issue-detail">
@@ -1096,12 +1141,12 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
       {classification && classification.category && (
         <div className="classification-detail">
           <h4>
-            Issue 智能分析结果
-            <span className={`badge ${classification.category}`}>
-              {formatCategory(classification.category)}
+            {labelInfo?.icon ?? ''} {labelInfo?.title ?? formatCategory(cat)}
+            <span className={`badge ${cat}`}>
+              {formatCategory(cat)}
             </span>
             {classification.confidence != null && (
-              <span style={{ fontSize: '12px', color: '#6a747e', fontWeight: 400 }}>
+              <span className="confidence-text">
                 置信度 {Math.round(classification.confidence * 100)}%
               </span>
             )}
@@ -1122,12 +1167,7 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
               </div>
             </div>
           )}
-          {classification.suggested_action && (
-            <div className="classification-row">
-              <span className="label">建议操作</span>
-              <div className="value"><p>{classification.suggested_action}</p></div>
-            </div>
-          )}
+
           {classification.signals && classification.signals.length > 0 && (
             <div className="classification-row">
               <span className="label">识别信号</span>
@@ -1143,9 +1183,108 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
         </div>
       )}
 
+      {/* ── LLM auto-reply draft + confirm button ── */}
+      {classification?.auto_reply_draft && (
+        <div className="auto-reply-section">
+          <h4>🤖 自动回复草稿</h4>
+          <div className="issue-body">{classification.auto_reply_draft}</div>
+          {replyStatus === 'idle' && (
+            <button className="primary-button" onClick={handleConfirmReply} style={{ marginTop: 8 }}>
+              确认回复
+            </button>
+          )}
+          {replyStatus === 'posting' && (
+            <button className="primary-button" disabled style={{ marginTop: 8 }}>
+              正在生成回复...
+            </button>
+          )}
+          {replyStatus === 'done' && (
+            <div style={{ marginTop: 8, fontSize: 13, color: '#18794e' }}>
+              回复已发布 →
+              <a href={replyUrl} target="_blank" style={{ marginLeft: 4 }}>查看评论</a>
+            </div>
+          )}
+          {replyStatus === 'error' && (
+            <div style={{ marginTop: 8, fontSize: 13, color: '#b42318' }}>
+              回复发布失败。
+              <button className="ghost-button" onClick={handleConfirmReply} style={{ marginLeft: 8, minHeight: 30, padding: '0 10px' }}>
+                重试
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="issue-detail-links">
         <a className="ghost-button" href={ghUrl} target="_blank">
-          在 GitHub 上查看 #{event.issue_number}
+          ↗ 在 GitHub 上查看 #{event.issue_number}
+        </a>
+      </div>
+    </div>
+  )
+}
+
+// ── Synced Issue Detail Modal (from main dashboard) -----------------------
+
+type SyncedIssueModalProps = {
+  issue: GitHubIssue
+  onClose: () => void
+}
+
+function SyncedIssueModal({ issue, onClose }: SyncedIssueModalProps) {
+  const c = issue.classification
+  const ghUrl = issue.html_url
+
+  const categoryIcons: Record<string, string> = {
+    bug: '🐛', feature_request: '💡', question: '❓',
+    documentation: '📖', duplicate: '🔁', info_needed: '📋',
+    invalid: '🚫', maintenance: '🔧', unknown: '🤔',
+  }
+
+  return (
+    <div className="issue-detail">
+      <div className="modal-header">
+        <h3>#{issue.number}</h3>
+        <button className="icon-button" onClick={onClose}>&#x2715;</button>
+      </div>
+
+      <div className="issue-detail-header">
+        <div className="issue-number">
+          #{issue.number} · {issue.state} · {issue.author ?? 'unknown'}
+          {issue.labels.length > 0 && <> · 标签: {issue.labels.join(', ')}</>}
+        </div>
+        <h3>{issue.title}</h3>
+      </div>
+
+      <div className="classification-detail">
+        <h4>
+          {categoryIcons[c.category] ?? '🤔'} {formatCategory(c.category)}
+          <span className={`badge ${c.category}`}>{formatCategory(c.category)}</span>
+          <span className="confidence-text">置信度 {Math.round(c.confidence * 100)}%</span>
+        </h4>
+        <div className="classification-row">
+          <span className="label">分析理由</span>
+          <div className="value"><p>{c.reason}</p></div>
+        </div>
+        <div className="classification-row">
+          <span className="label">置信度</span>
+          <div className="value">
+            <div className="confidence-bar"><span style={{ width: `${Math.round(c.confidence * 100)}%` }} /></div>
+          </div>
+        </div>
+        {c.signals.length > 0 && (
+          <div className="classification-row">
+            <span className="label">识别信号</span>
+            <div className="value">
+              <div className="signal-list">{c.signals.map(s => <span className="signal-tag" key={s}>{s}</span>)}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="issue-detail-links">
+        <a className="ghost-button" href={ghUrl} target="_blank">
+          ↗ 在 GitHub 上查看 #{issue.number}
         </a>
       </div>
     </div>

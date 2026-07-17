@@ -1446,3 +1446,44 @@ button,
 .issue-detail-links .ghost-button {
   flex: 1;
 }
+
+/* -- Auto-reply draft section (separate from classification) --------------- */
+
+.auto-reply-section {
+  background: #f6fbf9;
+  border: 1px solid #b8dcc8;
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.auto-reply-section h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #18794e;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auto-reply-section .issue-body {
+  background: #ffffff;
+  border: 1px solid #d4e8d8;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #2b3640;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* -- Confidence text in classification detail ----------------------------- */
+
+.confidence-text {
+  font-size: 12px;
+  color: #6a747e;
+  font-weight: 400;
+}

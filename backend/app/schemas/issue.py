@@ -40,6 +40,10 @@ class IssueClassification(BaseModel):
     reason: str
     suggested_action: str
     signals: list[str] = Field(default_factory=list)
+    auto_reply_draft: str | None = Field(
+        default=None,
+        description="LLM-generated draft reply for non-bug issues.",
+    )
 
 
 class GitHubIssue(BaseModel):

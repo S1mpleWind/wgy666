@@ -130,28 +130,17 @@ class IssueClassifier:
         body: str | None,
         labels: list[str],
     ) -> IssueClassification:
-        """Two-stage classification: rules → LLM fallback when uncertain.
+        """Two-stage classification: LLM first, rule fallback.
 
-        When the rule-based result is UNKNOWN or its confidence is
-        ≤``_LLM_THRESHOLD``, and the LLM is configured, the classifier
-        calls an OpenAI-compatible model to re-classify the issue.
+        When the LLM is available, it always runs — the rule result is
+        used only as a fallback when the LLM call fails.
         """
-        # Stage 1: rules.
-        rule_result = self.classify(title, body, labels)
+        if self._llm_available:
+            llm_result = await self._llm_classify(title, body, labels)
+            if llm_result is not None:
+                return llm_result
 
-        # Stage 2: LLM fallback if rules are uncertain.
-        needs_llm = (
-            self._llm_available
-            and (
-                rule_result.category == IssueCategory.UNKNOWN
-                or rule_result.confidence <= _LLM_THRESHOLD
-            )
-        )
-        if not needs_llm:
-            return rule_result
-
-        llm_result = await self._llm_classify(title, body, labels)
-        return llm_result if llm_result is not None else rule_result
+        return self.classify(title, body, labels)
 
     async def _llm_classify(
         self,
@@ -167,8 +156,13 @@ class IssueClassifier:
             f"Body: {body or '(empty)'}\n"
             f"Labels: {', '.join(labels) if labels else '(none)'}\n\n"
             "Respond in JSON only:\n"
-            '{"category": "<category>", "confidence": 0.0-1.0, "reason": "<brief reason>", '
-            '"signals": ["<key evidence>"]}\n'
+            '{"category": "<category>", "confidence": 0.0-1.0, '
+            '"reason": "<brief reason, include duplicate issue# if applicable>", '
+            '"signals": ["<key evidence>"], '
+            '"auto_reply_draft": "(if this is a question, info_needed, duplicate, '
+            'or documentation issue, write a draft reply in Chinese; '
+            'for duplicate, mention which issue it duplicates); '
+            'otherwise leave empty"}\n'
             "confidence must be >= 0.5 if you are sure, < 0.5 if uncertain."
         )
 
@@ -179,14 +173,17 @@ class IssueClassifier:
                     {
                         "role": "system",
                         "content": (
-                            "You are an issue triage assistant. Classify GitHub issues "
-                            "with precision. Respond in JSON only, no markdown."
+                            "You are an issue triage assistant for an open-source project. "
+                            "Classify GitHub issues with precision. "
+                            "For non-code issues (question, info_needed, duplicate, documentation), "
+                            "write a helpful auto-reply draft in Chinese. "
+                            "Respond in JSON only, no markdown."
                         ),
                     },
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
-                max_tokens=300,
+                max_tokens=500,
                 response_format={"type": "json_object"},
             )
         except Exception:
@@ -213,12 +210,15 @@ class IssueClassifier:
             signals = []
         signals = [str(s) for s in signals[:8]]
 
+        auto_reply_draft = str(data["auto_reply_draft"]).strip() if data.get("auto_reply_draft") else None
+
         return IssueClassification(
             category=category,
             confidence=round(confidence, 2),
             reason=data.get("reason", f"LLM classified as {category.value}.") or "",
             suggested_action=SUGGESTED_ACTIONS.get(category, ""),
             signals=signals,
+            auto_reply_draft=auto_reply_draft,
         )
 
     # ── Summary helper ────────────────────────────────────────────────

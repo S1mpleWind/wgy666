@@ -196,6 +196,7 @@ export type WebhookClassification = {
   reason: string | null
   suggested_action?: string | null
   signals?: string[]
+  auto_reply_draft?: string | null
 }
 
 export type WebhookEventItem = {
@@ -250,6 +251,20 @@ export async function fetchWebhookEventDetail(eventId: string): Promise<WebhookE
   if (!response.ok) {
     const error = await response.json().catch(() => null)
     throw new Error(error?.detail ?? `Failed to fetch event detail: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+/** Post an auto-reply for a webhook event via AgentHarness. */
+export async function postWebhookReply(eventId: string): Promise<{ status: string; reply_text: string; comment_url: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/reply`, {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to post reply: ${response.status}`)
   }
 
   return response.json()
