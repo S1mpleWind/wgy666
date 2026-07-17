@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.core.config import settings
@@ -29,16 +30,10 @@ async def github_webhook(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
-    record = await dispatch_event(x_github_event, payload, delivery_id=x_github_delivery)
-
-    # NOTE: Auto-reply is NOT posted automatically. The frontend shows
-    # the classification + auto_reply_draft for review. When the user
-    # clicks "confirm reply", a separate POST request generates the
-    # final reply via AgentHarness and posts it to GitHub.
-    #
-    # See: POST /api/webhooks/events/{event_id}/reply
-
-    # GitHub expects a 2xx response quickly.
+    # GitHub expects a 2xx response within 10s — dispatch asynchronously.
+    asyncio.create_task(dispatch_event(
+        x_github_event, payload, delivery_id=x_github_delivery
+    ))
     return {"status": "ok"}
 
 
