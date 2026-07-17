@@ -49,7 +49,11 @@ class RepositorySyncService:
         5. Assemble and return the snapshot.
         """
         ref = parse_github_repository_url(request.url)
-        clone_url = f"https://github.com/{ref.owner}/{ref.name}.git"
+        if settings.github_token:
+            # Authenticated clone — avoids GitHub rate limits for git operations.
+            clone_url = f"https://x-access-token:{settings.github_token}@github.com/{ref.owner}/{ref.name}.git"
+        else:
+            clone_url = f"https://github.com/{ref.owner}/{ref.name}.git"
 
         async with GitHubClient() as client:
             repository = await client.get_repository(ref)
