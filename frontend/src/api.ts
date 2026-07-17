@@ -140,6 +140,34 @@ export type RepositoryFileContent = {
   synced_at: string | null
 }
 
+export type ProjectDependency = {
+  name: string
+  ecosystem: string
+  group: string
+  source_file: string
+}
+
+export type ProjectStructureResponse = {
+  project_type: string
+  analyzed_file_count: number
+  analysis_warning: string | null
+  source_count: number
+  dependency_files: ClassifiedFile[]
+  dependency_packages: ProjectDependency[]
+  detected_frameworks: string[]
+  test_files: ClassifiedFile[]
+  doc_files: ClassifiedFile[]
+  config_files: ClassifiedFile[]
+  entry_files: ClassifiedFile[]
+  ci_files: ClassifiedFile[]
+  top_directories: Array<{
+    name: string
+    count: number
+    main_category: string
+    source_count: number
+  }>
+}
+
 // -- API calls -------------------------------------------------------------
 
 /** Trigger a full repository sync: fetch → classify → cache. */
@@ -274,6 +302,23 @@ export async function fetchFileContent(
   return response.json()
 }
 
+/** Fetch the backend's rule-based structure analysis for a synced repository. */
+export async function fetchProjectStructure(
+  owner: string,
+  name: string,
+): Promise<ProjectStructureResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tools/project-structure?freshness=cache_first`,
+  )
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch project structure: ${response.status}`)
+  }
+
+  return response.json()
+}
+
 /** Ask the repository assistant a question. */
 export async function askAssistant(payload: AssistantChatRequest): Promise<AssistantChatResponse> {
   const response = await fetch(`${API_BASE_URL}/api/assistant/chat`, {
@@ -295,4 +340,3 @@ export async function askAssistant(payload: AssistantChatRequest): Promise<Assis
 
   return response.json()
 }
-

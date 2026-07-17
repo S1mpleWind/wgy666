@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,7 +19,7 @@ import {
   TestTube2,
   Workflow,
 } from 'lucide-react'
-import type { ClassifiedFile, RepositorySnapshot } from './api'
+import type { ClassifiedFile, ProjectDependency, RepositorySnapshot } from './api'
 import './ProjectStructureDetails.css'
 
 export type AnalysisSection = 'architecture' | 'directories' | 'dependencies' | 'entrypoints' | 'quality'
@@ -29,6 +30,8 @@ export type ProjectStructureAnalysis = {
   analysisWarning: string | null
   sourceCount: number
   dependencyFiles: ClassifiedFile[]
+  dependencyPackages: ProjectDependency[]
+  detectedFrameworks: string[]
   testFiles: ClassifiedFile[]
   docFiles: ClassifiedFile[]
   configFiles: ClassifiedFile[]
@@ -38,7 +41,9 @@ export type ProjectStructureAnalysis = {
     name: string
     count: number
     mainCategory: string
+    sourceCount: number
   }>
+  analysisSource: 'backend' | 'local_fallback'
 }
 
 type Props = {
@@ -71,8 +76,8 @@ const sectionCopy: Record<AnalysisSection, { title: string; description: string 
     description: '集中查看依赖声明文件、技术生态和后续可解析的依赖关系。',
   },
   entrypoints: {
-    title: '入口文件与启动链路',
-    description: '定位可能的程序入口，并展示从启动命令到业务模块的调用过程。',
+    title: '入口文件与识别依据',
+    description: '按照文件名、目录位置和文件类别定位可能的程序入口。',
   },
   quality: {
     title: '测试、文档与工程化',
@@ -98,7 +103,7 @@ export function ProjectStructureDetails({ activeSection, analysis, repository, o
           </div>
           <span className="prototype-status">
             <CircleDot size={14} aria-hidden="true" />
-            原型示例
+            {analysis.analysisSource === 'backend' ? '后端实时解析' : '本地降级结果'}
           </span>
         </div>
         <nav className="structure-tabs" aria-label="项目结构详情">
@@ -120,7 +125,9 @@ export function ProjectStructureDetails({ activeSection, analysis, repository, o
       </header>
 
       <div className="prototype-note">
-        当前页面优先使用本次同步结果；缺少的数据以示例状态补全。后续接入知识图谱后，可替换为真实模块关系和调用链。
+        {analysis.analysisSource === 'backend'
+          ? '当前结果由后端基于同步目录、已索引源码和依赖清单生成。'
+          : '后端项目解析暂不可用，当前展示由同步快照生成的本地降级结果。'}
       </div>
 
       {activeSection === 'architecture' && <ArchitectureView analysis={analysis} repository={repository} onSelect={onSelect} />}
@@ -134,8 +141,11 @@ export function ProjectStructureDetails({ activeSection, analysis, repository, o
 
 function ArchitectureView({ analysis, repository, onSelect }: { analysis: ProjectStructureAnalysis; repository: RepositorySnapshot; onSelect: (section: AnalysisSection) => void }) {
   const directories = displayDirectories(analysis)
-  const sourceDirectories = directories.filter((item) => item.mainCategory === 'source_code').slice(0, 3)
-  const supportingDirectories = directories.filter((item) => item.mainCategory !== 'source_code').slice(0, 4)
+  const sourceDirectories = directories.filter((item) => item.sourceCount > 0).slice(0, 3)
+  const supportingDirectories = directories.filter((item) => item.sourceCount === 0).slice(0, 4)
+  const dependencyHighlights = analysis.detectedFrameworks.length > 0
+    ? analysis.detectedFrameworks
+    : displayDependencies(analysis).map((file) => file.path)
 
   return (
     <div className="structure-stack">
@@ -159,21 +169,21 @@ function ArchitectureView({ analysis, repository, onSelect }: { analysis: Projec
               icon={<Layers3 size={19} />}
               title="核心源码"
               subtitle={`${analysis.sourceCount} 个源码文件`}
-              items={sourceDirectories.length > 0 ? sourceDirectories.map((item) => item.name) : ['应用模块', '路由与服务', '公共组件']}
+              items={sourceDirectories.map((item) => item.name)}
               onClick={() => onSelect('directories')}
             />
             <ArchitectureBranch
               icon={<Package size={19} />}
               title="依赖与运行"
               subtitle={`${analysis.dependencyFiles.length} 份依赖声明`}
-              items={displayDependencies(analysis).slice(0, 3).map((file) => file.path)}
+              items={dependencyHighlights.slice(0, 4)}
               onClick={() => onSelect('dependencies')}
             />
             <ArchitectureBranch
               icon={<Settings2 size={19} />}
               title="工程支撑"
               subtitle={`${analysis.testFiles.length + analysis.docFiles.length + analysis.ciFiles.length} 个相关文件`}
-              items={supportingDirectories.length > 0 ? supportingDirectories.map((item) => item.name) : ['tests', 'docs', '.github']}
+              items={supportingDirectories.map((item) => item.name)}
               onClick={() => onSelect('quality')}
             />
           </div>
@@ -207,7 +217,9 @@ function ArchitectureBranch({ icon, title, subtitle, items, onClick }: { icon: R
         <small>{subtitle}</small>
       </span>
       <span className="branch-items">
-        {items.slice(0, 4).map((item) => <span key={item}>{item}</span>)}
+        {items.length > 0
+          ? items.slice(0, 4).map((item) => <span key={item}>{item}</span>)
+          : <span>暂无识别结果</span>}
       </span>
       <ArrowRight size={17} aria-hidden="true" />
     </button>
@@ -228,42 +240,68 @@ function PipelineStep({ number, title, text, last = false }: { number: string; t
 function DirectoryView({ analysis }: { analysis: ProjectStructureAnalysis }) {
   const directories = displayDirectories(analysis)
   const maxCount = Math.max(...directories.map((item) => item.count), 1)
+  const [selectedDirectoryName, setSelectedDirectoryName] = useState<string | null>(directories[0]?.name ?? null)
+  const selectedDirectory = directories.find((directory) => directory.name === selectedDirectoryName) ?? directories[0] ?? null
 
   return (
-    <div className="structure-split">
+    <div className="structure-split directory-view-layout">
       <section className="structure-panel directory-tree-panel">
         <div className="structure-panel-heading">
-          <div><p>Directory tree</p><h3>仓库目录树</h3></div>
+          <div><p>Directory mind map</p><h3>目录结构思维导图</h3></div>
           <span>{directories.length} 个主要目录</span>
         </div>
-        <div className="directory-root-row">
-          <Folder size={18} aria-hidden="true" />
-          <strong>repository/</strong>
-        </div>
-        <div className="directory-tree">
-          {directories.map((directory) => (
-            <div className="directory-row" key={directory.name}>
-              <span className="tree-line" />
-              <Folder size={17} aria-hidden="true" />
-              <div>
-                <strong>{directory.name}/</strong>
-                <small>{categoryLabel(directory.mainCategory)}</small>
+        <div className="directory-mindmap">
+          <div className="directory-map-root">
+            <span className="directory-root-icon"><GitBranch size={21} aria-hidden="true" /></span>
+            <strong>repository/</strong>
+            <span>{analysis.analyzedFileCount} 个文件样本</span>
+            <small>{analysis.sourceCount} 个源码文件</small>
+          </div>
+          <div className="directory-map-branches" role="group" aria-label="主要目录节点">
+            {directories.length === 0 && (
+              <div className="directory-map-empty">
+                <Folder size={19} aria-hidden="true" />
+                <span>暂未识别到主要目录</span>
               </div>
-              <span>{directory.count} files</span>
-            </div>
-          ))}
+            )}
+            {directories.map((directory) => {
+              const isSelected = selectedDirectory?.name === directory.name
+              return (
+                <button
+                  aria-pressed={isSelected}
+                  className={`directory-map-node${isSelected ? ' selected' : ''}`}
+                  data-category={directory.mainCategory}
+                  key={directory.name}
+                  type="button"
+                  onClick={() => setSelectedDirectoryName(directory.name)}
+                >
+                  <span className="directory-node-icon"><Folder size={18} aria-hidden="true" /></span>
+                  <span className="directory-node-copy">
+                    <strong title={directoryDisplayName(directory.name)}>{directoryDisplayName(directory.name)}</strong>
+                    <small>{directoryDescription(directory.name, directory.mainCategory)}</small>
+                  </span>
+                  <span className="directory-node-meta">
+                    <span>{directory.count} 个文件</span>
+                    <span>{categoryLabel(directory.mainCategory)}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       </section>
 
       <section className="structure-panel">
         <div className="structure-panel-heading">
           <div><p>Responsibility inference</p><h3>目录职责推断</h3></div>
+          {selectedDirectory && <span>当前：{directoryDisplayName(selectedDirectory.name)}</span>}
         </div>
         <div className="responsibility-list">
+          {directories.length === 0 && <p className="muted">暂无可推断的目录职责</p>}
           {directories.map((directory) => (
-            <article key={directory.name}>
+            <article className={selectedDirectory?.name === directory.name ? 'selected' : ''} key={directory.name}>
               <div>
-                <strong>{directory.name}</strong>
+                <strong>{directoryDisplayName(directory.name)}</strong>
                 <span>{directoryDescription(directory.name, directory.mainCategory)}</span>
               </div>
               <div className="responsibility-bar"><span style={{ width: `${Math.max((directory.count / maxCount) * 100, 8)}%` }} /></div>
@@ -277,6 +315,7 @@ function DirectoryView({ analysis }: { analysis: ProjectStructureAnalysis }) {
 
 function DependencyView({ analysis }: { analysis: ProjectStructureAnalysis }) {
   const dependencies = displayDependencies(analysis)
+  const packageGroups = dependencyGroups(analysis.dependencyPackages)
 
   return (
     <div className="structure-stack">
@@ -289,28 +328,47 @@ function DependencyView({ analysis }: { analysis: ProjectStructureAnalysis }) {
           <div className="dependency-table-head"><span>文件</span><span>生态</span><span>用途</span><span>状态</span></div>
           {dependencies.map((file) => {
             const ecosystem = dependencyEcosystem(file.path)
+            const packageCount = analysis.dependencyPackages.filter((item) => item.source_file === file.path).length
+            const status = packageCount > 0
+              ? `${packageCount} 项`
+              : isLockFile(file.path) ? '版本锁定文件' : '未解析到条目'
             return (
               <div className="dependency-table-row" key={file.path}>
                 <span><FileJson size={17} aria-hidden="true" /><strong>{file.path}</strong></span>
                 <span>{ecosystem}</span>
                 <span>{dependencyPurpose(file.path)}</span>
-                <span className="dependency-status"><CheckCircle2 size={15} /> 待解析</span>
+                <span className="dependency-status"><CheckCircle2 size={15} /> {status}</span>
               </div>
             )
           })}
+          {dependencies.length === 0 && <p className="muted">暂未识别到依赖声明文件</p>}
         </div>
       </section>
 
       <section className="structure-panel dependency-map-panel">
         <div className="structure-panel-heading">
-          <div><p>Planned relationship view</p><h3>依赖关系示例</h3></div>
+          <div><p>Dependency relationship view</p><h3>依赖分组</h3></div>
+          <span>{analysis.dependencyPackages.length} 项已解析依赖</span>
         </div>
         <div className="dependency-map">
-          <div className="dependency-source"><FileJson size={19} /><strong>依赖清单</strong><span>pyproject.toml / package.json</span></div>
+          <div className="dependency-source">
+            <span className="dependency-source-icon"><FileJson size={20} aria-hidden="true" /></span>
+            <strong>依赖清单</strong>
+            <small>{dependencies.length} 个声明文件 · {analysis.dependencyPackages.length} 项依赖</small>
+            <div className="dependency-source-files">
+              {dependencies.length > 0
+                ? dependencies.slice(0, 3).map((file) => <span key={file.path} title={file.path}>{file.path}</span>)
+                : <span>暂未识别依赖声明</span>}
+            </div>
+          </div>
           <div className="dependency-groups">
-            <DependencyGroup title="运行框架" items={['FastAPI', 'React', 'Uvicorn']} />
-            <DependencyGroup title="数据与接口" items={['HTTPX', 'Pydantic', 'PostgreSQL']} />
-            <DependencyGroup title="开发工具" items={['uv', 'Vite', 'TypeScript']} />
+            {packageGroups.map((group) => <DependencyGroup key={group.kind} kind={group.kind} title={group.title} items={group.items} />)}
+            {packageGroups.length === 0 && (
+              <div className="dependency-group-empty">
+                <Package size={20} aria-hidden="true" />
+                <div><strong>暂无依赖分组</strong><span>依赖声明存在时将在这里展示解析结果</span></div>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -318,8 +376,26 @@ function DependencyView({ analysis }: { analysis: ProjectStructureAnalysis }) {
   )
 }
 
-function DependencyGroup({ title, items }: { title: string; items: string[] }) {
-  return <article><strong>{title}</strong>{items.map((item) => <span key={item}>{item}</span>)}</article>
+function DependencyGroup({ kind, title, items }: { kind: string; title: string; items: string[] }) {
+  const Icon = kind === 'runtime_framework'
+    ? Layers3
+    : kind === 'data_interface'
+      ? Braces
+      : kind === 'development'
+        ? Settings2
+        : Package
+
+  return (
+    <article className="dependency-group-card" data-kind={kind}>
+      <div className="dependency-group-heading">
+        <span className="dependency-group-icon"><Icon size={18} aria-hidden="true" /></span>
+        <div><strong>{title}</strong><small>{items.length} 项已识别</small></div>
+      </div>
+      <div className="dependency-package-list">
+        {items.map((item) => <span key={item} title={item}><CircleDot size={10} aria-hidden="true" />{item}</span>)}
+      </div>
+    </article>
+  )
 }
 
 function EntryPointView({ analysis }: { analysis: ProjectStructureAnalysis }) {
@@ -329,13 +405,13 @@ function EntryPointView({ analysis }: { analysis: ProjectStructureAnalysis }) {
     <div className="structure-stack">
       <section className="structure-panel">
         <div className="structure-panel-heading">
-          <div><p>Startup flow</p><h3>启动与调用链路示例</h3></div>
+          <div><p>Entry analysis</p><h3>入口识别链路</h3></div>
         </div>
         <div className="startup-flow">
-          <FlowNode icon={<Play size={18} />} eyebrow="启动命令" title="uv run / npm run dev" />
-          <FlowNode icon={<FileCode2 size={18} />} eyebrow="入口文件" title={entrypoints[0]?.path ?? 'app/main.py'} />
-          <FlowNode icon={<Workflow size={18} />} eyebrow="注册层" title="路由、组件与中间件" />
-          <FlowNode icon={<Braces size={18} />} eyebrow="业务层" title="Service / API Client" />
+          <FlowNode icon={<Play size={18} />} eyebrow="解析规则" title="文件名 + 目录位置 + 文件类别" />
+          <FlowNode icon={<FileCode2 size={18} />} eyebrow="首选入口" title={entrypoints[0]?.path ?? '暂未识别'} />
+          <FlowNode icon={<Workflow size={18} />} eyebrow="入口类型" title={entryType(entrypoints[0]?.path)} />
+          <FlowNode icon={<Braces size={18} />} eyebrow="所属模块" title={entryModule(entrypoints[0]?.path)} />
         </div>
       </section>
 
@@ -345,12 +421,13 @@ function EntryPointView({ analysis }: { analysis: ProjectStructureAnalysis }) {
           <span>{entrypoints.length} 个候选</span>
         </div>
         <div className="entrypoint-grid">
+          {entrypoints.length === 0 && <p className="muted">暂未识别到符合规则的入口文件</p>}
           {entrypoints.map((file, index) => (
             <article key={file.path}>
               <span className="entry-rank">0{index + 1}</span>
               <FileCode2 size={20} aria-hidden="true" />
               <div><strong>{file.path}</strong><p>{entryReason(file.path)}</p></div>
-              <span className="confidence-chip">{Math.max(92 - index * 9, 65)}% 置信度</span>
+              <span className="confidence-chip">规则优先级 {index + 1}</span>
             </article>
           ))}
         </div>
@@ -380,11 +457,12 @@ function QualityView({ analysis }: { analysis: ProjectStructureAnalysis }) {
         <QualityMetric icon={<GitBranch size={20} />} label="CI/CD" value={analysis.ciFiles.length} note="自动检查与发布" />
       </section>
 
-      <div className="structure-split">
+      <div className="structure-split quality-detail-layout">
         <section className="structure-panel">
           <div className="structure-panel-heading"><div><p>Engineering files</p><h3>工程文件样本</h3></div></div>
           <div className="engineering-files">
-            {(samples.length > 0 ? samples : qualityFallbackFiles()).map((file) => (
+            {samples.length === 0 && <p className="muted">暂无工程文件样本</p>}
+            {samples.map((file) => (
               <div key={file.path}><FileText size={16} /><strong>{file.path}</strong><span>{categoryLabel(file.category)}</span></div>
             ))}
           </div>
@@ -395,8 +473,8 @@ function QualityView({ analysis }: { analysis: ProjectStructureAnalysis }) {
             <span>代码提交</span><ArrowRight size={16} /><span>CI 检查</span><ArrowRight size={16} /><span>自动测试</span><ArrowRight size={16} /><span>文档构建</span>
           </div>
           <div className="quality-todos">
-            <p><CheckCircle2 size={16} /> 已完成文件分类和数量统计</p>
-            <p><CircleDot size={16} /> 后续解析测试命令、覆盖率和工作流依赖</p>
+            <p><CheckCircle2 size={16} /> 已接通后端文件分类、依赖清单与入口规则解析</p>
+            <p><CircleDot size={16} /> 下一步解析测试命令、覆盖率和工作流依赖</p>
             <p><CircleDot size={16} /> 后续关联失败测试与具体源码模块</p>
           </div>
         </section>
@@ -410,40 +488,33 @@ function QualityMetric({ icon, label, value, note }: { icon: React.ReactNode; la
 }
 
 function displayDirectories(analysis: ProjectStructureAnalysis) {
-  if (analysis.topDirectories.length > 0) return analysis.topDirectories
-  return [
-    { name: 'backend', count: 42, mainCategory: 'source_code' },
-    { name: 'frontend', count: 31, mainCategory: 'source_code' },
-    { name: 'tests', count: 18, mainCategory: 'tests' },
-    { name: 'docs', count: 12, mainCategory: 'documentation' },
-    { name: '.github', count: 6, mainCategory: 'ci_cd' },
-  ]
+  return analysis.topDirectories
 }
 
 function displayDependencies(analysis: ProjectStructureAnalysis): ClassifiedFile[] {
-  if (analysis.dependencyFiles.length > 0) return analysis.dependencyFiles.slice(0, 10)
-  const files = analysis.projectType.includes('Python')
-    ? ['pyproject.toml', 'uv.lock', 'requirements.txt']
-    : ['package.json', 'package-lock.json']
-  if (analysis.projectType.includes('全栈')) files.push('frontend/package.json')
-  return files.map((path) => ({ path, category: 'dependency', size: null }))
+  return analysis.dependencyFiles.slice(0, 10)
 }
 
 function displayEntrypoints(analysis: ProjectStructureAnalysis): ClassifiedFile[] {
-  if (analysis.entryFiles.length > 0) return analysis.entryFiles.slice(0, 6)
-  const paths = analysis.projectType.includes('Python')
-    ? ['backend/app/main.py', 'backend/app/api/router.py', 'frontend/src/main.tsx']
-    : ['src/main.tsx', 'src/App.tsx', 'vite.config.ts']
-  return paths.map((path) => ({ path, category: 'source_code', size: null }))
+  return analysis.entryFiles.slice(0, 6)
 }
 
-function qualityFallbackFiles(): ClassifiedFile[] {
-  return [
-    { path: 'tests/test_repository_sync.py', category: 'tests', size: null },
-    { path: 'README.md', category: 'documentation', size: null },
-    { path: '.github/workflows/test.yml', category: 'ci_cd', size: null },
-    { path: 'pyproject.toml', category: 'configuration', size: null },
-  ]
+function dependencyGroups(packages: ProjectDependency[]) {
+  const labels: Record<string, string> = {
+    runtime_framework: '运行框架',
+    data_interface: '数据与接口',
+    development: '开发工具',
+    runtime: '其他运行依赖',
+  }
+  const grouped = new Map<string, string[]>()
+  for (const dependency of packages) {
+    const items = grouped.get(dependency.group) ?? []
+    if (!items.includes(dependency.name)) items.push(dependency.name)
+    grouped.set(dependency.group, items)
+  }
+  return ['runtime_framework', 'data_interface', 'development', 'runtime']
+    .filter((group) => grouped.has(group))
+    .map((group) => ({ kind: group, title: labels[group], items: (grouped.get(group) ?? []).slice(0, 8) }))
 }
 
 function categoryLabel(category: string) {
@@ -456,6 +527,7 @@ function categoryLabel(category: string) {
 
 function directoryDescription(name: string, category: string) {
   const normalized = name.toLowerCase()
+  if (normalized.includes('prototype')) return '界面原型与演示实现'
   if (normalized.includes('front')) return '前端页面、交互组件与样式资源'
   if (normalized.includes('back') || normalized === 'app' || normalized === 'src') return '核心业务代码与应用模块'
   if (normalized.includes('test')) return '自动化测试与测试数据'
@@ -463,6 +535,10 @@ function directoryDescription(name: string, category: string) {
   if (normalized === '.github') return '工作流、Issue 模板与仓库配置'
   if (normalized === '(root)') return '项目级配置和启动文件'
   return `${categoryLabel(category)}相关文件`
+}
+
+function directoryDisplayName(name: string) {
+  return name === '(root)' ? '根目录文件' : `${name}/`
 }
 
 function dependencyEcosystem(path: string) {
@@ -482,6 +558,11 @@ function dependencyPurpose(path: string) {
   return '构建或运行依赖'
 }
 
+function isLockFile(path: string) {
+  const name = path.toLowerCase()
+  return name.includes('lock') || name.endsWith('yarn.lock')
+}
+
 function entryReason(path: string) {
   const name = path.toLowerCase()
   if (name.endsWith('main.py')) return '包含后端应用创建与服务启动入口'
@@ -489,4 +570,19 @@ function entryReason(path: string) {
   if (name.includes('router')) return '集中注册 API 路由和模块入口'
   if (name.endsWith('app.tsx')) return '前端页面结构和交互入口'
   return '文件名和目录位置符合入口规则'
+}
+
+function entryType(path?: string) {
+  if (!path) return '暂未识别'
+  const name = path.toLowerCase()
+  if (name.endsWith('.py')) return 'Python 应用入口'
+  if (name.endsWith('.tsx') || name.endsWith('.ts')) return 'Web 前端入口'
+  if (name.endsWith('.js')) return 'Node.js 或 Web 入口'
+  if (name.endsWith('.cs')) return '.NET 应用入口'
+  return '通用应用入口'
+}
+
+function entryModule(path?: string) {
+  if (!path) return '暂未识别'
+  return path.split('/')[0] || '(root)'
 }
