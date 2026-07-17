@@ -244,7 +244,7 @@ function DirectoryView({ analysis }: { analysis: ProjectStructureAnalysis }) {
   const selectedDirectory = directories.find((directory) => directory.name === selectedDirectoryName) ?? directories[0] ?? null
 
   return (
-    <div className="structure-split">
+    <div className="structure-split directory-view-layout">
       <section className="structure-panel directory-tree-panel">
         <div className="structure-panel-heading">
           <div><p>Directory mind map</p><h3>目录结构思维导图</h3></div>
@@ -277,13 +277,12 @@ function DirectoryView({ analysis }: { analysis: ProjectStructureAnalysis }) {
                 >
                   <span className="directory-node-icon"><Folder size={18} aria-hidden="true" /></span>
                   <span className="directory-node-copy">
-                    <strong>{directoryDisplayName(directory.name)}</strong>
+                    <strong title={directoryDisplayName(directory.name)}>{directoryDisplayName(directory.name)}</strong>
                     <small>{directoryDescription(directory.name, directory.mainCategory)}</small>
                   </span>
                   <span className="directory-node-meta">
                     <span>{directory.count} 个文件</span>
                     <span>{categoryLabel(directory.mainCategory)}</span>
-                    {directory.sourceCount > 0 && <span>{directory.sourceCount} 个源码</span>}
                   </span>
                 </button>
               )
