@@ -76,7 +76,7 @@ class RepositorySyncService:
                 max_bytes=settings.rag_max_source_file_bytes,
             )
 
-        classified_issues = [self._map_issue(issue) for issue in issues]
+        classified_issues = [await self._map_issue(issue) for issue in issues]
         issue_categories = self.issue_classifier.summarize(
             [issue.classification.category for issue in classified_issues]
         )
@@ -184,10 +184,10 @@ class RepositorySyncService:
 
     # -- Mapping helpers (GitHub API → Pydantic models) --------------------
 
-    def _map_issue(self, payload: dict[str, Any]) -> GitHubIssue:
+    async def _map_issue(self, payload: dict[str, Any]) -> GitHubIssue:
         """Map a GitHub API issue object to our ``GitHubIssue`` model."""
         labels = [label["name"] for label in payload.get("labels", []) if "name" in label]
-        classification = self.issue_classifier.classify(
+        classification = await self.issue_classifier.async_classify(
             title=payload.get("title") or "",
             body=payload.get("body"),
             labels=labels,
