@@ -14,7 +14,7 @@ import type { AnalysisSection, ProjectStructureAnalysis } from './ProjectStructu
  */
 
 const defaultForm = {
-  url: 'https://github.com/fastapi/fastapi',
+  url: 'https://github.com/S1mpleWind/wgy666',
   max_issues: 30,
   max_pull_requests: 15,
   max_commits: 12,
