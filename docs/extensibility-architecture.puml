@@ -1,0 +1,194 @@
+@startuml
+!pragma diagram_type component
+
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName "sans-serif"
+skinparam defaultFontSize 12
+
+skinparam component {
+    FontSize 12
+    BorderColor #4A5D7A
+    FontColor #2B3A55
+    BackgroundColor #E8EDF5
+    Shadowing false
+    BorderThickness 1
+}
+skinparam interface {
+    BorderColor #D41976
+    BackgroundColor #FFF0F5
+    FontColor #8B104E
+    FontSize 11
+    BorderThickness 2
+}
+skinparam arrow {
+    FontSize 10
+    FontColor #495057
+    Thickness 1.5
+}
+skinparam note {
+    FontSize 11
+    BorderColor #B0B0B0
+    BackgroundColor #FFFFF0
+}
+
+title <b>IssueScope 可扩展性架构视图</b>
+caption \n\nA8 GitHub仓库问答与Issue分析系统 — 质量属性驱动架构设计
+
+' =============================================
+' Layer 1: API Layer
+' =============================================
+
+package "API 路由层" as API_LAYER {
+    component "仓库同步\nPOST /api/repositories/sync" as SYNC_API
+    component "智能问答\nPOST /api/assistant/chat" as CHAT_API
+    component "Webhook 接收\nPOST /api/webhooks/github" as WH_API
+    component "查询工具\nGET .../tools/*" as TOOL_API
+}
+
+' =============================================
+' Layer 2: Core - Agent Harness
+' =============================================
+
+package "AI Agent 引擎" as AGENT_LAYER {
+
+    component "AgentHarness\n(工具调用循环)" as HARNESS
+
+    interface "ToolRegistry\n接口" as TOOL_REG_IF
+
+    component "工具注册中心\n(当前 6 个工具)" as TOOL_REG
+
+    note right of TOOL_REG
+        <b>扩展机制：注册表模式</b>
+        新增工具只需：
+        ① tools.py 新增实现
+        ② tool_registry.py 注册
+        ③ harness 自动发现
+        无需改动 AgentHarness 代码
+        ——
+        <b>已预留工具位：</b>
+        • 代码修复建议
+        • PR 自动生成
+        • FAQ 知识库检索
+    end note
+}
+
+' =============================================
+' Layer 3: Core - Services
+' =============================================
+
+package "业务服务层" as SERVICE_LAYER {
+
+    component "GitHubClient\n(REST API 客户端)" as GH_CLIENT
+
+    component "RepositorySync\n(同步编排器)" as SYNC_SVC
+
+    component "RepositoryQuery\n(查询门面)\n缓存/刷新策略" as QUERY_SVC
+
+    interface "Classifier\n接口" as CLASSIFIER_IF
+
+    component "FileClassifier\n(规则分类器)" as FILE_CLS
+    component "IssueClassifier\n(规则分类器)" as ISSUE_CLS
+
+    note right of FILE_CLS
+        <b>扩展机制：策略模式</b>
+        当前：纯规则分类
+        升级：规则初筛 + LLM 复核
+        调用者无感知切换
+    end note
+}
+
+' =============================================
+' Layer 4: Webhook Handler
+' =============================================
+
+package "Webhook 事件处理" as WH_LAYER {
+
+    component "dispatch_event()\n事件分发器" as DISPATCH
+
+    component "handle_issue_event()\nIssue 处理" as ISSUE_HANDLER
+
+    component "[预留] push 事件\n增量同步" as PUSH_HANDLER
+
+    component "[预留] PR 事件\n自动审核" as PR_HANDLER
+
+    note right of DISPATCH
+        <b>扩展机制：事件分发模式</b>
+        新增事件类型只需：
+        ① 添加 handle_xxx_event()
+        ② 在 dispatch 中注册
+        各事件处理器相互独立
+    end note
+}
+
+' =============================================
+' Layer 5: Storage
+' =============================================
+
+package "数据存储层" as STORAGE_LAYER {
+
+    interface "RepositoryStore\n接口" as STORE_IF
+
+    component "InMemoryStore\n(开发模式)" as MEM_STORE
+    component "PostgreSQL\n(生产模式)" as PG_STORE
+
+    component "[预留] pgvector\n向量存储 (RAG)" as VEC_STORE
+    component "[预留] Celery\n任务队列" as CELERY
+
+    note right of STORE_IF
+        <b>扩展机制：适配器模式</b>
+        save/get/list 统一接口
+        开发: 内存存储免依赖
+        生产: PostgreSQL 持久化
+        未来: 可接入 Redis 缓存
+    end note
+}
+
+' =============================================
+' Layer 6: External
+' =============================================
+
+package "外部服务" as EXT_LAYER {
+    component "GitHub REST API" as GHAPI
+    component "GitHub Webhook" as GHWH
+    component "LLM API\n(OpenAI-compatible)" as LLM
+
+    note right of LLM
+        <b>扩展机制：配置驱动</b>
+        LLM_API_BASE_URL
+        LLM_MODEL
+        可切换不同模型提供商
+    end note
+}
+
+' =============================================
+' Connections
+' =============================================
+
+SYNC_API -down-> SYNC_SVC
+CHAT_API -down-> HARNESS
+WH_API -down-> DISPATCH
+TOOL_API -down-> QUERY_SVC
+
+HARNESS -right-> TOOL_REG_IF
+TOOL_REG_IF -down-> TOOL_REG
+TOOL_REG -down-> QUERY_SVC
+
+SYNC_SVC -down-> GH_CLIENT
+SYNC_SVC -down-> CLASSIFIER_IF
+CLASSIFIER_IF -down-> FILE_CLS
+CLASSIFIER_IF -down-> ISSUE_CLS
+
+SYNC_SVC -down-> STORE_IF
+QUERY_SVC -down-> STORE_IF
+ISSUE_HANDLER -down-> STORE_IF
+DISPATCH -down-> ISSUE_HANDLER
+
+STORE_IF -down-> MEM_STORE
+STORE_IF -down-> PG_STORE
+PG_STORE -right-> VEC_STORE
+
+GH_CLIENT -up-> GHAPI
+DISPATCH -up-> GHWH
+HARNESS -up-> LLM
+
+@enduml
