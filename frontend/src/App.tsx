@@ -1,6 +1,6 @@
-import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { AlertCircle, ArrowRight, Bell, Bot, Boxes, FileCode2, FileText, FolderGit, GitBranch, Loader2, Package, RefreshCw, Search, Send, Settings2, Star, TestTube2, UserRound, X } from 'lucide-react'
+import { Activity, AlertCircle, ArrowRight, Bell, Bot, Boxes, CheckCircle2, ChevronDown, CircleDot, Database, FileCode2, FileText, FolderGit, GitBranch, LayoutDashboard, Loader2, Network, Package, RefreshCw, Search, Send, Settings2, ShieldCheck, Sparkles, Star, TestTube2, UserRound, Workflow, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import './App.css'
@@ -21,6 +21,8 @@ const defaultForm = {
   max_tree_items: 600,
 }
 
+type WorkspaceSection = 'overview' | 'analysis' | 'issues' | 'agent'
+
 function App() {
   const [form, setForm] = useState(defaultForm)
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null)
@@ -38,6 +40,8 @@ function App() {
   const [eventDetailLoading, setEventDetailLoading] = useState(false)
   const [selectedIssue, setSelectedIssue] = useState<GitHubIssue | null>(null)
   const [showIssueOverview, setShowIssueOverview] = useState(false)
+  const [activeWorkspaceSection, setActiveWorkspaceSection] = useState<WorkspaceSection>('overview')
+  const [chatFocusRequest, setChatFocusRequest] = useState(0)
 
   // -- Notification inbox --------------------------------------------------
 
@@ -137,40 +141,96 @@ function App() {
     if (analysisSection) window.scrollTo({ top: 0, behavior: 'auto' })
   }, [analysisSection])
 
+  function handleWorkspaceNavigation(section: WorkspaceSection) {
+    setActiveWorkspaceSection(section)
+
+    if (section === 'agent') {
+      setChatFocusRequest((current) => current + 1)
+      if (window.innerWidth <= 1020) {
+        window.requestAnimationFrame(() => {
+          document.getElementById('repository-agent')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        })
+      }
+      return
+    }
+
+    if (!snapshot) {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLInputElement>('.sync-card input')?.focus()
+      })
+      return
+    }
+
+    if (section === 'analysis' && projectAnalysis) {
+      setAnalysisSection('architecture')
+      return
+    }
+
+    setAnalysisSection(null)
+    const targetId = section === 'issues' ? 'issue-intelligence' : 'overview'
+    window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
   return (
     <main className="workspace">
       {/* -- Sidebar: sync form + module info ------------------------------- */}
       <aside className="sidebar">
         <div className="brand">
-          <FolderGit size={28} aria-hidden="true" />
+          <span className="brand-mark"><Sparkles size={20} aria-hidden="true" /></span>
           <div>
             <h1>IssueScope</h1>
-            <p>GitHub Issue Analysis</p>
+            <p>Repository Intelligence</p>
           </div>
         </div>
 
-        <form className="sync-form" onSubmit={handleSubmit}>
+        <form className="sync-form sync-card" onSubmit={handleSubmit}>
+          <div className="sync-card-heading">
+            <div>
+              <span>仓库上下文</span>
+              <strong>{snapshot?.identity.full_name ?? '连接 GitHub 仓库'}</strong>
+            </div>
+            <span className={`connection-dot ${snapshot ? 'ready' : ''}`} title={snapshot ? '仓库已同步' : '等待同步'} />
+          </div>
           <label>
-            GitHub 仓库
-            <input
-              value={form.url}
-              onChange={(event) => setForm({ ...form, url: event.target.value })}
-              placeholder="https://github.com/owner/repo"
-            />
+            仓库地址
+            <div className="input-with-icon">
+              <FolderGit size={16} aria-hidden="true" />
+              <input
+                value={form.url}
+                onChange={(event) => setForm({ ...form, url: event.target.value })}
+                placeholder="https://github.com/owner/repo"
+              />
+            </div>
           </label>
 
-          <div className="field-grid">
-            <NumberField label="Issues" value={form.max_issues} onChange={(value) => setForm({ ...form, max_issues: value })} />
-            <NumberField label="PRs" value={form.max_pull_requests} onChange={(value) => setForm({ ...form, max_pull_requests: value })} />
-            <NumberField label="Commits" value={form.max_commits} onChange={(value) => setForm({ ...form, max_commits: value })} />
-            <NumberField label="Files" value={form.max_tree_items} onChange={(value) => setForm({ ...form, max_tree_items: value })} />
-          </div>
+          <details className="sync-options">
+            <summary>
+              同步范围
+              <ChevronDown size={15} aria-hidden="true" />
+            </summary>
+            <div className="field-grid">
+              <NumberField label="Issues" value={form.max_issues} onChange={(value) => setForm({ ...form, max_issues: value })} />
+              <NumberField label="PRs" value={form.max_pull_requests} onChange={(value) => setForm({ ...form, max_pull_requests: value })} />
+              <NumberField label="Commits" value={form.max_commits} onChange={(value) => setForm({ ...form, max_commits: value })} />
+              <NumberField label="Files" value={form.max_tree_items} onChange={(value) => setForm({ ...form, max_tree_items: value })} />
+            </div>
+          </details>
 
-          <button className="primary-button" disabled={isLoading} type="submit">
+          <button className="primary-button sync-button" disabled={isLoading} type="submit">
             {isLoading ? <Loader2 className="spin" size={18} aria-hidden="true" /> : <RefreshCw size={18} aria-hidden="true" />}
-            同步仓库
+            {isLoading ? '正在建立上下文' : snapshot ? '重新同步' : '同步并分析'}
           </button>
         </form>
+
+        <nav className="workspace-nav" aria-label="工作台导航">
+          <p>工作台</p>
+          <button aria-pressed={activeWorkspaceSection === 'overview'} className={activeWorkspaceSection === 'overview' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('overview')}><LayoutDashboard size={17} />仓库概览</button>
+          <button aria-pressed={activeWorkspaceSection === 'analysis'} className={activeWorkspaceSection === 'analysis' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('analysis')}><Network size={17} />项目解析</button>
+          <button aria-pressed={activeWorkspaceSection === 'issues'} className={activeWorkspaceSection === 'issues' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('issues')}><Activity size={17} />Issue 智能分析</button>
+          <button aria-pressed={activeWorkspaceSection === 'agent'} className={activeWorkspaceSection === 'agent' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('agent')}><Bot size={17} />仓库问答</button>
+        </nav>
 
         <div className="sidebar-actions">
           <button className="ghost-button sidebar-action" onClick={() => setShowInbox(!showInbox)}>
@@ -192,13 +252,11 @@ function App() {
         )}
 
         <section className="sidebar-section">
-          <h2>当前模块边界</h2>
-          <ul>
-            <li>GitHub REST API 接入</li>
-            <li>仓库文件规则分类</li>
-            <li>Issue 初版规则分类</li>
-            <li>后续数据库与 RAG 可替换接入</li>
-          </ul>
+          <div className="system-status">
+            <span className="status-icon"><Database size={16} aria-hidden="true" /></span>
+            <div><strong>技术原型环境</strong><small>API、Webhook 与项目解析已接入</small></div>
+            <CircleDot size={14} aria-hidden="true" />
+          </div>
         </section>
       </aside>
 
@@ -206,14 +264,19 @@ function App() {
       <section className="content">
         {/* Top bar with actions (always visible) */}
         <div className="top-bar">
-          <div />
+          <div className="breadcrumb">
+            <span>IssueScope</span>
+            <ArrowRight size={14} aria-hidden="true" />
+            <strong>{analysisSection ? '项目解析' : snapshot?.identity.name ?? '仓库工作台'}</strong>
+          </div>
           <div className="top-actions">
+            <span className="live-status"><span /> 前端在线</span>
             <button className={`icon-button ${showInbox ? 'active' : ''}`} onClick={() => setShowInbox(!showInbox)} title="通知">
-              <Bell size={27} aria-hidden="true" />
+              <Bell size={19} aria-hidden="true" />
               {webhookEvents.length > 0 && <span className="badge-count">{webhookEvents.length}</span>}
             </button>
             <button className={`icon-button ${showSettings ? 'active' : ''}`} onClick={() => setShowSettings(!showSettings)} title="配置">
-              <Settings2 size={27} aria-hidden="true" />
+              <Settings2 size={19} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -351,9 +414,14 @@ function App() {
             ) : (
               <>
             {/* Repository header */}
-            <header className="repo-header">
-              <div>
-                <p className="eyebrow">Synced {formatDate(snapshot.synced_at)}</p>
+            <header className="repo-header" id="overview">
+              <div className="repo-identity">
+                <span className="repo-avatar"><FolderGit size={24} aria-hidden="true" /></span>
+                <div>
+                <div className="repo-meta-line">
+                  <span className="repo-visibility"><ShieldCheck size={13} />已建立安全上下文</span>
+                  <span>同步于 {formatDate(snapshot.synced_at)}</span>
+                </div>
                 <h2>{snapshot.identity.full_name}</h2>
                 <p className="description">{snapshot.description ?? 'No repository description.'}</p>
                 <div className="topic-row">
@@ -361,11 +429,14 @@ function App() {
                     <span key={topic}>{topic}</span>
                   ))}
                 </div>
+                </div>
               </div>
-              <a className="ghost-button" href={snapshot.identity.html_url} target="_blank">
-                <FolderGit size={18} aria-hidden="true" />
-                GitHub
-              </a>
+              <div className="repo-actions">
+                <span className="branch-chip"><GitBranch size={14} />{snapshot.identity.default_branch}</span>
+                <a className="ghost-button" href={snapshot.identity.html_url} target="_blank">
+                  <FolderGit size={17} aria-hidden="true" />在 GitHub 查看
+                </a>
+              </div>
             </header>
 
             {/* Metric cards */}
@@ -377,7 +448,7 @@ function App() {
             </section>
 
             {/* Issues summary panel */}
-            <section className="panel issues-summary">
+            <section className="panel issues-summary" id="issue-intelligence">
               <div className="panel-header-with-actions">
                 <h3>Issues</h3>
                 <button className="ghost-button" onClick={() => setShowIssueOverview(true)}>
@@ -395,6 +466,7 @@ function App() {
                 </div>
               </div>
               <CategoryBars summaries={snapshot.issue_categories} total={snapshot.issues.filter(i => i.state === 'open').length} />
+              <IssueWorkflow issues={snapshot.issues} eventCount={webhookEvents.length} />
             </section>
 
             {/* Language distribution + README */}
@@ -408,11 +480,13 @@ function App() {
             </section>
 
             {projectAnalysis && (
-              <ProjectAnalysisPanel
-                analysis={projectAnalysis}
-                repositoryName={snapshot.identity.name}
-                onOpen={setAnalysisSection}
-              />
+              <div id="project-analysis">
+                <ProjectAnalysisPanel
+                  analysis={projectAnalysis}
+                  repositoryName={snapshot.identity.name}
+                  onOpen={setAnalysisSection}
+                />
+              </div>
             )}
 
             {/* Recent PRs and commits */}
@@ -450,7 +524,11 @@ function App() {
           </>
         )}
       </section>
-      <ChatSidebar snapshot={snapshot} />
+      <ChatSidebar
+        focusRequest={chatFocusRequest}
+        highlighted={activeWorkspaceSection === 'agent'}
+        snapshot={snapshot}
+      />
     </main>
   )
 }
@@ -576,7 +654,7 @@ type ChatThreadMessage = AssistantChatMessage & {
   usedCachedData?: boolean
 }
 
-function ChatSidebar({ snapshot }: { snapshot: RepositorySnapshot | null }) {
+function ChatSidebar({ snapshot, focusRequest, highlighted }: { snapshot: RepositorySnapshot | null; focusRequest: number; highlighted: boolean }) {
   const [messages, setMessages] = useState<ChatThreadMessage[]>([
     {
       role: 'assistant',
@@ -586,6 +664,16 @@ function ChatSidebar({ snapshot }: { snapshot: RepositorySnapshot | null }) {
   const [input, setInput] = useState('')
   const [isAsking, setIsAsking] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (focusRequest > 0) inputRef.current?.focus()
+  }, [focusRequest])
+
+  function selectPrompt(prompt: string) {
+    setInput(prompt)
+    window.requestAnimationFrame(() => inputRef.current?.focus())
+  }
 
   async function handleAsk(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -629,16 +717,27 @@ function ChatSidebar({ snapshot }: { snapshot: RepositorySnapshot | null }) {
   }
 
   return (
-    <aside className="chat-sidebar">
+    <aside className={`chat-sidebar ${highlighted ? 'highlighted' : ''}`} id="repository-agent">
       <header className="chat-header">
         <div>
-          <Bot size={22} aria-hidden="true" />
+          <span className="agent-mark"><Bot size={18} aria-hidden="true" /></span>
           <div>
             <h2>Repository Agent</h2>
-            <p>{snapshot ? snapshot.identity.full_name : '等待仓库上下文'}</p>
+            <p>{snapshot ? `正在分析 ${snapshot.identity.full_name}` : '等待仓库上下文'}</p>
           </div>
         </div>
+        <span className={`agent-state ${snapshot ? 'ready' : ''}`}>
+          <span />{snapshot ? 'Ready' : 'Standby'}
+        </span>
       </header>
+
+      <div className="quick-prompts" aria-label="快捷问题">
+        {['项目入口在哪？', '解释核心架构', '有哪些高风险 Issue？'].map((prompt) => (
+          <button disabled={!snapshot || isAsking} key={prompt} type="button" onClick={() => selectPrompt(prompt)}>
+            {prompt}
+          </button>
+        ))}
+      </div>
 
       <div className="chat-thread">
         {messages.map((message, index) => (
@@ -701,15 +800,19 @@ function ChatSidebar({ snapshot }: { snapshot: RepositorySnapshot | null }) {
       )}
 
       <form className="chat-form" onSubmit={handleAsk}>
-        <input
-          disabled={!snapshot || isAsking}
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          placeholder={snapshot ? '问：这个项目测试在哪？' : '请先同步仓库'}
-        />
-        <button disabled={!snapshot || isAsking || !input.trim()} type="submit" aria-label="发送问题">
-          <Send size={17} aria-hidden="true" />
-        </button>
+        <div className="chat-composer">
+          <input
+            ref={inputRef}
+            disabled={!snapshot || isAsking}
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder={snapshot ? '向仓库提问，回答将附带来源…' : '请先同步仓库'}
+          />
+          <button disabled={!snapshot || isAsking || !input.trim()} type="submit" aria-label="发送问题">
+            <Send size={17} aria-hidden="true" />
+          </button>
+        </div>
+        <p><Sparkles size={12} />回答基于同步仓库数据，重要结论会标注来源</p>
       </form>
     </aside>
   )
@@ -738,9 +841,51 @@ function NumberField({ label, value, onChange }: NumberFieldProps) {
 function EmptyState({ isLoading }: { isLoading: boolean }) {
   return (
     <div className="empty-state">
-      {isLoading ? <Loader2 className="spin" size={36} aria-hidden="true" /> : <FolderGit size={42} aria-hidden="true" />}
-      <h2>{isLoading ? '正在同步仓库' : '等待仓库同步'}</h2>
-      <p>输入公开 GitHub 仓库地址后，这里会显示仓库信息、文件分类、Issue 分类、PR 和提交记录。</p>
+      <span className="empty-visual">
+        {isLoading ? <Loader2 className="spin" size={34} aria-hidden="true" /> : <Network size={34} aria-hidden="true" />}
+      </span>
+      <span className="empty-kicker">Repository intelligence workspace</span>
+      <h2>{isLoading ? '正在构建仓库上下文' : '从一个 GitHub 仓库开始'}</h2>
+      <p>{isLoading ? '正在同步代码、Issue、提交记录并生成项目结构分析。' : '连接仓库后，项目结构、Issue 分析、活动记录和智能问答会在同一个工作台中展开。'}</p>
+      <div className="empty-steps">
+        <span><strong>01</strong>同步数据</span>
+        <ArrowRight size={15} />
+        <span><strong>02</strong>解析项目</span>
+        <ArrowRight size={15} />
+        <span><strong>03</strong>智能协作</span>
+      </div>
+    </div>
+  )
+}
+
+function IssueWorkflow({ issues, eventCount }: { issues: GitHubIssue[]; eventCount: number }) {
+  const classified = issues.filter((issue) => issue.classification?.category).length
+  const actionReady = issues.filter((issue) => ['bug', 'feature_request'].includes(issue.classification?.category)).length
+  const needsReply = issues.filter((issue) => ['question', 'info_needed', 'duplicate'].includes(issue.classification?.category)).length
+
+  const stages = [
+    { label: '事件接入', value: eventCount || issues.length, note: 'Webhook / 同步', complete: issues.length > 0 },
+    { label: '自动分类', value: classified, note: '规则与 LLM', complete: classified > 0 },
+    { label: '回复建议', value: needsReply, note: '等待维护者确认', complete: needsReply > 0 },
+    { label: '修复候选', value: actionReady, note: '定位代码与方案', complete: actionReady > 0 },
+  ]
+
+  return (
+    <div className="issue-workflow">
+      <div className="workflow-heading">
+        <div><Workflow size={17} /><strong>Issue 处理流水线</strong></div>
+        <span>自动化状态概览</span>
+      </div>
+      <div className="workflow-stages">
+        {stages.map((stage, index) => (
+          <div className={`workflow-stage ${stage.complete ? 'complete' : ''}`} key={stage.label}>
+            <span className="stage-index">{stage.complete ? <CheckCircle2 size={17} /> : String(index + 1).padStart(2, '0')}</span>
+            <div><strong>{stage.label}</strong><small>{stage.note}</small></div>
+            <b>{stage.value}</b>
+            {index < stages.length - 1 && <ArrowRight className="stage-arrow" size={16} />}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

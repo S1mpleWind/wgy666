@@ -1278,3 +1278,409 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* -- Interactive repository architecture graph -------------------------- */
+
+.architecture-panel {
+  background: var(--color-surface, #ffffff);
+}
+
+.repository-graph-shell {
+  container-name: repository-graph;
+  container-type: inline-size;
+  overflow: hidden;
+  border: 1px solid var(--color-border, #dce4ec);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.graph-loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 360px;
+  border: 1px solid var(--color-border, #dce4ec);
+  border-radius: 8px;
+  color: #2368d9;
+  background: #f7faff;
+}
+
+.graph-loading-state > div {
+  display: grid;
+  gap: 3px;
+}
+
+.graph-loading-state strong {
+  color: #263746;
+  font-size: 13px;
+}
+
+.graph-loading-state span {
+  color: #748392;
+  font-size: 11px;
+}
+
+.repository-graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--color-border, #dce4ec);
+  background: #ffffff;
+}
+
+.graph-legend,
+.graph-toolbar-actions,
+.graph-legend span,
+.graph-toolbar-actions > span {
+  display: flex;
+  align-items: center;
+}
+
+.graph-legend,
+.graph-toolbar-actions {
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.graph-legend span,
+.graph-toolbar-actions > span {
+  gap: 6px;
+  color: #687786;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.graph-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.legend-repository {
+  background: #2368d9;
+}
+
+.legend-capability {
+  background: #14845a;
+}
+
+.legend-evidence {
+  background: #8ba9c7;
+}
+
+.graph-toolbar-actions {
+  justify-content: flex-end;
+}
+
+.graph-toolbar-actions button {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid #d3dee8;
+  border-radius: 6px;
+  color: #435668;
+  background: #ffffff;
+  font-size: 11px;
+}
+
+.graph-toolbar-actions button:hover {
+  border-color: #8fb1d8;
+  color: #2368d9;
+  background: #eef5ff;
+}
+
+.repository-graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 236px;
+  gap: 0;
+  min-width: 0;
+}
+
+.repository-flow-canvas {
+  height: 610px;
+  min-width: 0;
+  border-right: 1px solid var(--color-border, #dce4ec);
+  background: #f6f9fc;
+}
+
+.repository-flow-canvas .react-flow__pane {
+  cursor: grab;
+}
+
+.repository-flow-canvas .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.architecture-flow-node {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 190px;
+  min-height: 76px;
+  padding: 11px;
+  border: 1px solid #cbd8e4;
+  border-left: 4px solid #8ba9c7;
+  border-radius: 8px;
+  color: #1c2935;
+  background: #ffffff;
+  box-shadow: 0 7px 18px rgba(25, 45, 65, 0.08);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.architecture-flow-node:hover {
+  border-color: #80a6d1;
+  transform: translateY(-1px);
+}
+
+.architecture-flow-node.selected {
+  border-color: #2368d9;
+  box-shadow: 0 0 0 3px rgba(35, 104, 217, 0.14), 0 10px 24px rgba(25, 45, 65, 0.12);
+}
+
+.architecture-flow-node.repository {
+  border-left-color: #2368d9;
+  background: #eef5ff;
+}
+
+.architecture-flow-node.source,
+.architecture-flow-node.dependency,
+.architecture-flow-node.quality {
+  border-left-color: #14845a;
+  background: #f4faf7;
+}
+
+.architecture-node-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  color: #2368d9;
+  background: #e7f0ff;
+}
+
+.source .architecture-node-icon,
+.dependency .architecture-node-icon,
+.quality .architecture-node-icon {
+  color: #14845a;
+  background: #e5f5ed;
+}
+
+.architecture-node-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.architecture-node-copy small,
+.architecture-node-copy strong,
+.architecture-node-copy em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.architecture-node-copy small {
+  color: #7a8794;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.architecture-node-copy strong {
+  font-size: 13px;
+}
+
+.architecture-node-copy em {
+  color: #627282;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.architecture-handle {
+  width: 8px;
+  height: 8px;
+  border: 2px solid #ffffff;
+  background: #7899bb;
+}
+
+.graph-inspector {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 20px 18px;
+  background: #ffffff;
+}
+
+.graph-inspector-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 18px;
+  border-radius: 8px;
+  color: #2368d9;
+  background: #e9f1ff;
+}
+
+.graph-inspector-icon.source,
+.graph-inspector-icon.dependency,
+.graph-inspector-icon.quality {
+  color: #14845a;
+  background: #e7f5ee;
+}
+
+.graph-inspector p,
+.graph-inspector h4,
+.graph-inspector strong,
+.graph-inspector span {
+  margin: 0;
+}
+
+.graph-inspector p {
+  color: #788695;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.graph-inspector h4 {
+  margin-top: 5px;
+  color: #17212b;
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+
+.graph-inspector > strong {
+  margin-top: 9px;
+  color: #2368d9;
+  font-size: 13px;
+}
+
+.graph-inspector > span {
+  margin-top: 13px;
+  color: #5a6978;
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.graph-inspector button {
+  width: 100%;
+  min-height: 36px;
+  margin-top: auto;
+  border: 1px solid #c6d8ef;
+  border-radius: 6px;
+  color: #2368d9;
+  background: #eef5ff;
+  font-size: 11px;
+}
+
+.graph-inspector button:hover {
+  border-color: #8fb1d8;
+  background: #e4efff;
+}
+
+.repository-flow-canvas .react-flow__controls,
+.repository-flow-canvas .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid #d2dee9;
+  border-radius: 7px;
+  box-shadow: 0 6px 18px rgba(25, 45, 65, 0.09);
+}
+
+.repository-flow-canvas .react-flow__controls-button {
+  border-bottom-color: #e2e8ee;
+  color: #3f5367;
+  background: #ffffff;
+}
+
+.repository-flow-canvas .react-flow__controls-button:hover {
+  background: #edf4fd;
+}
+
+.repository-flow-canvas .react-flow__minimap {
+  width: 126px;
+  height: 84px;
+  background: #ffffff;
+}
+
+.repository-graph-shell.expanded {
+  position: fixed;
+  z-index: 1200;
+  inset: 16px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #f8fafc;
+  box-shadow: 0 28px 80px rgba(14, 29, 43, 0.28);
+}
+
+.repository-graph-shell.expanded .repository-graph-layout {
+  min-height: 0;
+}
+
+.repository-graph-shell.expanded .repository-flow-canvas {
+  height: 100%;
+  min-height: 0;
+}
+
+@container repository-graph (max-width: 780px) {
+  .repository-graph-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .repository-flow-canvas {
+    height: 560px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border, #dce4ec);
+  }
+
+  .graph-inspector {
+    min-height: 190px;
+  }
+
+  .graph-inspector button {
+    width: auto;
+    margin-top: 16px;
+  }
+}
+
+@media (max-width: 680px) {
+  .architecture-panel {
+    padding: 12px;
+  }
+
+  .repository-graph-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .graph-toolbar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .repository-flow-canvas {
+    height: 500px;
+  }
+
+  .repository-flow-canvas .react-flow__minimap {
+    display: none;
+  }
+
+  .repository-graph-shell.expanded {
+    inset: 6px;
+  }
+
+  .repository-graph-shell.expanded .graph-inspector {
+    display: none;
+  }
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
@@ -21,6 +21,10 @@ import {
 } from 'lucide-react'
 import type { ClassifiedFile, ProjectDependency, RepositorySnapshot } from './api'
 import './ProjectStructureDetails.css'
+
+const RepositoryArchitectureGraph = lazy(() => import('./RepositoryArchitectureGraph').then((module) => ({
+  default: module.RepositoryArchitectureGraph,
+})))
 
 export type AnalysisSection = 'architecture' | 'directories' | 'dependencies' | 'entrypoints' | 'quality'
 
@@ -140,13 +144,6 @@ export function ProjectStructureDetails({ activeSection, analysis, repository, o
 }
 
 function ArchitectureView({ analysis, repository, onSelect }: { analysis: ProjectStructureAnalysis; repository: RepositorySnapshot; onSelect: (section: AnalysisSection) => void }) {
-  const directories = displayDirectories(analysis)
-  const sourceDirectories = directories.filter((item) => item.sourceCount > 0).slice(0, 3)
-  const supportingDirectories = directories.filter((item) => item.sourceCount === 0).slice(0, 4)
-  const dependencyHighlights = analysis.detectedFrameworks.length > 0
-    ? analysis.detectedFrameworks
-    : displayDependencies(analysis).map((file) => file.path)
-
   return (
     <div className="structure-stack">
       <section className="structure-panel architecture-panel">
@@ -158,36 +155,9 @@ function ArchitectureView({ analysis, repository, onSelect }: { analysis: Projec
           <span>{analysis.analyzedFileCount} 个文件样本</span>
         </div>
 
-        <div className="architecture-map">
-          <div className="architecture-root">
-            <GitBranch size={20} aria-hidden="true" />
-            <strong>{repository.identity.name}</strong>
-            <span>{analysis.projectType}</span>
-          </div>
-          <div className="architecture-branches">
-            <ArchitectureBranch
-              icon={<Layers3 size={19} />}
-              title="核心源码"
-              subtitle={`${analysis.sourceCount} 个源码文件`}
-              items={sourceDirectories.map((item) => item.name)}
-              onClick={() => onSelect('directories')}
-            />
-            <ArchitectureBranch
-              icon={<Package size={19} />}
-              title="依赖与运行"
-              subtitle={`${analysis.dependencyFiles.length} 份依赖声明`}
-              items={dependencyHighlights.slice(0, 4)}
-              onClick={() => onSelect('dependencies')}
-            />
-            <ArchitectureBranch
-              icon={<Settings2 size={19} />}
-              title="工程支撑"
-              subtitle={`${analysis.testFiles.length + analysis.docFiles.length + analysis.ciFiles.length} 个相关文件`}
-              items={supportingDirectories.map((item) => item.name)}
-              onClick={() => onSelect('quality')}
-            />
-          </div>
-        </div>
+        <Suspense fallback={<GraphLoadingState />}>
+          <RepositoryArchitectureGraph analysis={analysis} repository={repository} onSelect={onSelect} />
+        </Suspense>
       </section>
 
       <section className="structure-panel">
@@ -208,21 +178,12 @@ function ArchitectureView({ analysis, repository, onSelect }: { analysis: Projec
   )
 }
 
-function ArchitectureBranch({ icon, title, subtitle, items, onClick }: { icon: React.ReactNode; title: string; subtitle: string; items: string[]; onClick: () => void }) {
+function GraphLoadingState() {
   return (
-    <button className="architecture-branch" type="button" onClick={onClick}>
-      <span className="branch-icon">{icon}</span>
-      <span className="branch-copy">
-        <strong>{title}</strong>
-        <small>{subtitle}</small>
-      </span>
-      <span className="branch-items">
-        {items.length > 0
-          ? items.slice(0, 4).map((item) => <span key={item}>{item}</span>)
-          : <span>暂无识别结果</span>}
-      </span>
-      <ArrowRight size={17} aria-hidden="true" />
-    </button>
+    <div className="graph-loading-state">
+      <Network size={24} aria-hidden="true" />
+      <div><strong>正在生成交互架构图</strong><span>加载节点关系与可视化引擎…</span></div>
+    </div>
   )
 }
 
