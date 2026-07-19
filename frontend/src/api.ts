@@ -256,6 +256,18 @@ export async function fetchWebhookEventDetail(eventId: string): Promise<WebhookE
   return response.json()
 }
 
+/** Trigger an auto-fix for a bug issue. Generates a PR via AgentHarness. */
+export async function postAutoFix(eventId: string): Promise<{ status: string; pr_url: string; branch_name: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/fix`, {
+    method: 'POST',
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to auto-fix: ${response.status}`)
+  }
+  return response.json()
+}
+
 /** Mark a webhook event as read or deleted. */
 export async function updateWebhookEvent(eventId: string, action: 'read' | 'delete'): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}?action=${action}`, {

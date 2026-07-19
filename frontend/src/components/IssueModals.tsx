@@ -6,7 +6,7 @@
  * - SyncedIssueModal: detail for a sync-sourced issue
  */
 import { useState } from 'react'
-import { postWebhookReply } from '../api'
+import { postAutoFix, postWebhookReply } from '../api'
 import type { GitHubIssue, WebhookEventDetail } from '../api'
 import { formatCategory, formatDate } from '../utils/format'
 import '../component-css/IssueModals.css'
@@ -21,6 +21,8 @@ type IssueDetailModalProps = {
 function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
   const [replyStatus, setReplyStatus] = useState<'idle' | 'posting' | 'done' | 'error'>('idle')
   const [replyUrl, setReplyUrl] = useState('')
+  const [fixStatus, setFixStatus] = useState<'idle' | 'posting' | 'done' | 'error'>('idle')
+  const [fixUrl, setFixUrl] = useState('')
   const classification = event.classification
   const ghUrl = `https://github.com/${event.repository}/issues/${event.issue_number}`
   const cat = classification?.category ?? ''
@@ -33,6 +35,17 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
       setReplyStatus('done')
     } catch {
       setReplyStatus('error')
+    }
+  }
+
+  async function handleConfirmFix() {
+    setFixStatus('posting')
+    try {
+      const result = await postAutoFix(event.event_id)
+      setFixUrl(result.pr_url)
+      setFixStatus('done')
+    } catch {
+      setFixStatus('error')
     }
   }
 
@@ -137,6 +150,37 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
             <div style={{ marginTop: 8, fontSize: 13, color: '#b42318' }}>
               回复发布失败。
               <button className="ghost-button" onClick={handleConfirmReply} style={{ marginLeft: 8, minHeight: 30, padding: '0 10px' }}>
+                重试
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Auto-fix button for bug issues ── */}
+      {cat === 'bug' && (
+        <div className="auto-reply-section" style={{ borderColor: '#f0c030' }}>
+          <h4 style={{ color: '#b8860b' }}>🔧 自动修复</h4>
+          {fixStatus === 'idle' && (
+            <button className="primary-button" onClick={handleConfirmFix} style={{ marginTop: 8 }}>
+              确认修复并提 PR
+            </button>
+          )}
+          {fixStatus === 'posting' && (
+            <button className="primary-button" disabled style={{ marginTop: 8 }}>
+              正在分析并生成修复...
+            </button>
+          )}
+          {fixStatus === 'done' && (
+            <div style={{ marginTop: 8, fontSize: 13, color: '#18794e' }}>
+              PR 已创建 →
+              <a href={fixUrl} target="_blank" style={{ marginLeft: 4 }}>查看 PR</a>
+            </div>
+          )}
+          {fixStatus === 'error' && (
+            <div style={{ marginTop: 8, fontSize: 13, color: '#b42318' }}>
+              自动修复失败。
+              <button className="ghost-button" onClick={handleConfirmFix} style={{ marginLeft: 8, minHeight: 30, padding: '0 10px' }}>
                 重试
               </button>
             </div>

@@ -1,22 +1,23 @@
 """Auto-fix and pull request creation service.
 
-Orchestrates the end-to-end pipeline for automatically fixing bug
-issues: locate relevant code → generate fix → create branch → commit
-files → open pull request.
+Orchestrates the full pipeline: use AgentHarness to analyse a bug issue →
+generate fix → create branch → commit files → open pull request.
 
-Steps ③④⑤ (create branch → commit files → open PR) are fully
-implemented using the GitHub Contents API. Steps ① (RAG locate) and
-② (LLM code generation) remain as stubs until the code-generation
-prompt is tuned.
+Steps ③④⑤ (create branch → commit files → open PR) use the GitHub Contents API.
+Steps ①② (RAG locate + LLM fix generation) use AgentHarness with tool-calling.
 """
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
 
+from app.assistant.harness import AgentHarness
 from app.core.config import settings
 from app.services.github_client import GitHubClient
 from app.services.repository_url import RepositoryRef
+from app.storage import repository_store
 
 
 @dataclass
@@ -56,8 +57,7 @@ class AutoFixService:
 
         service = AutoFixService()
         result = await service.fix_issue(
-            owner="fastapi",
-            name="fastapi",
+            owner="fastapi", name="fastapi",
             issue_number=42,
             issue_title="Crash when saving",
             issue_body="Traceback ...",
@@ -84,29 +84,16 @@ class AutoFixService:
         ref = RepositoryRef(owner=owner, name=name)
         branch_name = f"auto-fix/issue-{issue_number}"
 
-        # ── Step ①: Locate relevant source files via RAG ────────────
-        relevant_paths = await self._locate_relevant_files(owner, name, issue_title)
-        if not relevant_paths:
-            return FixResult(
-                success=False,
-                branch_name=branch_name,
-                error="Could not locate relevant source files for this issue. "
-                      "RAG-based code location is not yet implemented.",
-            )
-
-        # ── Step ②: Generate fix code via LLM ───────────────────────
-        from app.storage import repository_store
-
-        snapshot = repository_store.get(owner, name)
-        fix_proposal = await self._generate_fix(
-            ref, snapshot, issue_title, issue_body, labels, relevant_paths, branch_name
+        # ── Step ①②: Use AgentHarness to locate files + generate fix ──
+        fix_proposal = await self._generate_fix_with_harness(
+            owner, name, issue_number, issue_title, issue_body, labels, branch_name,
         )
         if fix_proposal is None or not fix_proposal.files:
             return FixResult(
                 success=False,
                 branch_name=branch_name,
-                error="Could not generate fix code. "
-                      "LLM code generation is not yet implemented.",
+                error=fix_proposal.pr_body if fix_proposal and fix_proposal.pr_body
+                     else "Could not generate fix code.",
             )
 
         # ── Step ③: Create branch ───────────────────────────────────
@@ -123,9 +110,7 @@ class AutoFixService:
         async with GitHubClient() as gh:
             for change in fix_proposal.files:
                 await gh.create_or_update_file(
-                    ref,
-                    change.path,
-                    change.content,
+                    ref, change.path, change.content,
                     commit_message=change.commit_message,
                     branch=branch_name,
                     sha=change.sha,
@@ -144,49 +129,140 @@ class AutoFixService:
 
         return FixResult(success=True, pr_url=pr["html_url"], branch_name=branch_name)
 
-    # ── Step ① stub ────────────────────────────────────────────────────
+    # ── Step ①②: AgentHarness-based fix generation ─────────────────────
 
-    async def _locate_relevant_files(self, owner: str, name: str, issue_title: str) -> list[str]:
-        """Search the knowledge base for source files related to the bug.
-
-        TODO: Use KnowledgeGraphService to find files relevant to the
-        issue description. For now, returns an empty list to prevent
-        the pipeline from creating an empty PR.
-
-            from app.services.knowledge_graph import KnowledgeGraphService
-            from app.storage import repository_store
-            snapshot = repository_store.get(owner, name)
-            if snapshot:
-                results = KnowledgeGraphService().search(
-                    snapshot, query=issue_title, focus="source_code"
-                )
-                return list(dict.fromkeys(
-                    r.chunk.source_path for r in results if r.chunk.source_path
-                ))
-        """
-        _ = owner, name, issue_title
-        return []
-
-    # ── Step ② stub ────────────────────────────────────────────────────
-
-    async def _generate_fix(
+    async def _generate_fix_with_harness(
         self,
-        ref: RepositoryRef,
-        snapshot: object,
+        owner: str,
+        name: str,
+        issue_number: int,
         issue_title: str,
         issue_body: str | None,
         labels: list[str],
-        relevant_paths: list[str],
         branch_name: str,
     ) -> FixProposal | None:
-        """Send the bug description + relevant source code to the LLM and
-        ask it to produce a fix.
+        """Use AgentHarness to explore the repo and generate a fix.
 
-        TODO: Build a prompt with the issue context and relevant source
-        files, call AsyncOpenAI, parse the response into FixFileChange
-        entries. Each FixFileChange.sha can be obtained by calling
-        ``GitHubClient.get_file_content(ref, path, branch, max_bytes)``
-        for existing files.
+        The LLM calls tools (search_files, knowledge_graph_search) to
+        understand the issue, then outputs a JSON block with file changes.
         """
-        _ = ref, snapshot, issue_title, issue_body, labels, relevant_paths, branch_name
-        return None
+        snapshot = repository_store.get(owner, name)
+        if snapshot is None:
+            return FixProposal(branch_name=branch_name, title="", pr_body="Repository not synced yet.", files=[])
+
+        harness = AgentHarness()
+        labels_str = ", ".join(labels) if labels else "(none)"
+        body_str = issue_body or "(no body provided)"
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a code-fixing assistant for an open-source project. "
+                    "A user has reported a bug. Your job is to:\n"
+                    "1. Use the available tools to explore the repository and understand the code.\n"
+                    "2. Find the root cause of the bug.\n"
+                    "3. Generate a fix.\n\n"
+                    "After your analysis, output a JSON block at the end of your response:\n"
+                    '```json\n'
+                    '{\n'
+                    '  "title": "fix: short description",\n'
+                    '  "pr_body": "explanation of the fix",\n'
+                    '  "files": [\n'
+                    '    {"path": "src/file.py", "content": "full new file content", '
+                    '"commit_message": "fix: what changed"}\n'
+                    '  ]\n'
+                    '}\n'
+                    '```\n'
+                    "The JSON must be valid and complete. "
+                    "For existing files, include the full updated file content in 'content'. "
+                    "I will handle getting the file SHA and committing.\n\n"
+                    f"Repository: {snapshot.identity.full_name}\n"
+                    "Answer in Chinese."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"## Bug Report\n\n"
+                    f"**Title**: {issue_title}\n"
+                    f"**Body**: {body_str}\n"
+                    f"**Labels**: {labels_str}\n\n"
+                    "Please analyse this bug and generate a fix."
+                ),
+            },
+        ]
+
+        final_text, _ = await harness.run(messages, snapshot)
+        if not final_text:
+            return None
+
+        # Parse the JSON block from the response.
+        json_match = re.search(r'```json\s*(\{.*?\})\s*```', final_text, re.DOTALL)
+        if not json_match:
+            # Try finding any JSON object as fallback.
+            json_match = re.search(r'(\{.*?"files"\s*:.*?\})', final_text, re.DOTALL)
+        if not json_match:
+            return FixProposal(
+                branch_name=branch_name, title="",
+                pr_body=final_text[:500],
+                files=[],
+            )
+
+        try:
+            data = json.loads(json_match.group(1))
+        except json.JSONDecodeError:
+            return FixProposal(
+                branch_name=branch_name, title="",
+                pr_body="Failed to parse fix output.",
+                files=[],
+            )
+
+        files_raw = data.get("files", [])
+        if not files_raw:
+            return FixProposal(
+                branch_name=branch_name, title=data.get("title", ""),
+                pr_body=data.get("pr_body", ""),
+                files=[],
+            )
+
+        # Resolve SHAs for existing files by fetching current file metadata.
+        async with GitHubClient() as gh:
+            files: list[FixFileChange] = []
+            for f in files_raw:
+                path = f.get("path", "")
+                content = f.get("content", "")
+                commit_msg = f.get("commit_message", f"fix: {issue_title[:60]}")
+
+                # Try to get SHA for existing file.
+                sha = None
+                try:
+                    existing = await gh.get_file_content(ref, path, "main", 1)
+                    if existing[0] is not None:
+                        # Need SHA from the contents API response.
+                        # Use a HEAD request to get it.
+                        import base64
+                        from urllib.parse import quote
+                        encoded_path = quote(path, safe="/")
+                        try:
+                            payload = await gh._get(
+                                f"/repos/{ref.owner}/{ref.name}/contents/{encoded_path}",
+                                params={"ref": "main"},
+                            )
+                            sha = payload.get("sha")
+                        except Exception:
+                            sha = None
+                except Exception:
+                    sha = None
+
+                files.append(FixFileChange(
+                    path=path, content=content,
+                    commit_message=commit_msg, sha=sha,
+                ))
+
+        return FixProposal(
+            branch_name=branch_name,
+            title=data.get("title", f"fix: {issue_title[:72]}"),
+            pr_body=data.get("pr_body", issue_title),
+            files=files,
+        )
