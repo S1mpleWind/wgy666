@@ -1,4 +1,11 @@
-"""OpenAI SDK based repository assistant harness."""
+"""OpenAI SDK based repository assistant harness.
+
+Harness runs a tool-calling loop: LLM decides which tools to call → executes
+them → feeds results back to LLM → repeats until LLM gives a final answer.
+
+``answer()`` wraps this loop for the interactive chat panel (frontend).
+``run()`` is the raw loop for backend services (auto-reply, auto-fix).
+"""
 
 import json
 from typing import Any
@@ -10,7 +17,6 @@ from app.assistant.tools import ToolResult, merge_citations
 from app.core.config import settings
 from app.schemas.assistant import AssistantChatRequest, AssistantChatResponse
 from app.schemas.repository import RepositorySnapshot
-from app.schemas.issue import IssueCategory
 from app.services.repository_query import RepositoryQueryService
 
 
@@ -24,7 +30,12 @@ class AgentHarnessError(Exception):
 
 
 class AgentHarness:
-    """Let the configured OpenAI-compatible model choose and call repository tools."""
+    """OpenAI-compatible tool-calling loop.
+
+    Two entry points:
+    - ``answer(request)`` — interactive Q&A, returns structured response
+    - ``run(messages, snapshot)`` — raw loop, returns plain text
+    """
 
     def __init__(self) -> None:
         self.query = RepositoryQueryService()
@@ -34,85 +45,25 @@ class AgentHarness:
             base_url=settings.llm_api_base_url,
         )
 
+    # ── Public API ───────────────────────────────────────────────────
+
     async def answer(self, request: AssistantChatRequest) -> AssistantChatResponse:
+        """Interactive Q&A — builds context from request, returns structured response."""
         if not settings.llm_api_key:
             raise AgentHarnessError("LLM_API_KEY is not configured.", status_code=503)
 
         snapshot, used_cached_data = await self.query.get_snapshot(
-            request.owner,
-            request.name,
-            request.freshness,
+            request.owner, request.name, request.freshness,
+        )
+        messages = self._build_initial_messages(
+            request, snapshot.identity.full_name, used_cached_data,
         )
 
-        messages = self._build_initial_messages(request, snapshot.identity.full_name, used_cached_data)
-        tool_results: list[ToolResult] = []
-        max_rounds = max(1, settings.assistant_max_tool_rounds)
+        # Delegate the tool loop to run().
+        final_text, tool_results = await self.run(messages, snapshot)
 
-        for round_index in range(max_rounds):
-            try:
-                completion = await self.client.chat.completions.create(
-                    model=settings.llm_model,
-                    messages=messages,
-                    tools=self.registry.openai_tools(),
-                    tool_choice="auto",
-                )
-            except BadRequestError as exc:
-                raise AgentHarnessError(f"LLM tool-calling request was rejected: {exc.message}") from exc
-            except (APIError, OpenAIError) as exc:
-                raise AgentHarnessError(f"LLM request failed: {exc}") from exc
-
-            assistant_message = completion.choices[0].message
-            tool_calls = assistant_message.tool_calls or []
-
-            if not tool_calls:
-                return AssistantChatResponse(
-                    answer=assistant_message.content or "模型没有返回可用回答。",
-                    repository=snapshot.identity.full_name,
-                    used_cached_data=used_cached_data,
-                    tool_calls=[result.call for result in tool_results],
-                    citations=merge_citations(tool_results),
-                )
-
-            messages.append(assistant_message.model_dump(exclude_none=True))
-
-            for tool_call in tool_calls:
-                result = self.registry.execute(
-                    tool_call.function.name,
-                    tool_call.function.arguments,
-                    snapshot,
-                )
-                tool_results.append(result)
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": self._tool_result_content(result),
-                    }
-                )
-
-            if round_index == max_rounds - 1:
-                messages.append(
-                    {
-                        "role": "system",
-                        "content": (
-                            "The maximum number of tool rounds has been reached. "
-                            "Give the best possible final answer using only the tool results already available. "
-                            "If the evidence is insufficient, say what is missing."
-                        ),
-                    }
-                )
-
-        try:
-            final = await self.client.chat.completions.create(
-                model=settings.llm_model,
-                messages=messages,
-            )
-        except (APIError, OpenAIError) as exc:
-            raise AgentHarnessError(f"LLM final-answer request failed: {exc}") from exc
-
-        final_answer = final.choices[0].message.content or "模型没有返回最终回答。"
         return AssistantChatResponse(
-            answer=final_answer,
+            answer=final_text or "模型没有返回可用回答。",
             repository=snapshot.identity.full_name,
             used_cached_data=used_cached_data,
             tool_calls=[result.call for result in tool_results],
@@ -124,26 +75,46 @@ class AgentHarness:
         messages: list[dict[str, Any]],
         snapshot: RepositorySnapshot,
         max_rounds: int | None = None,
-    ) -> str:
-        """Run the tool-calling loop with given messages and return final text."""
+    ) -> tuple[str, list[ToolResult]]:
+        """Run the tool-calling loop with pre-built messages.
+
+        Args:
+            messages: Initial message list (system + user prompts).
+            snapshot: Repository snapshot for tool execution.
+            max_rounds: Max tool-calling iterations (default from config).
+
+        Returns:
+            (final_answer_text, list_of_tool_results)
+        """
         max_rounds = max_rounds or max(1, settings.assistant_max_tool_rounds)
         tool_results: list[ToolResult] = []
 
         for round_index in range(max_rounds):
-            completion = await self.client.chat.completions.create(
-                model=settings.llm_model,
-                messages=messages,
-                tools=self.registry.openai_tools(),
-                tool_choice="auto",
-            )
+            # ── Call LLM ─────────────────────────────────────────────
+            try:
+                completion = await self.client.chat.completions.create(
+                    model=settings.llm_model,
+                    messages=messages,
+                    tools=self.registry.openai_tools(),
+                    tool_choice="auto",
+                )
+            except BadRequestError as exc:
+                raise AgentHarnessError(
+                    f"LLM tool-calling request was rejected: {exc.message}",
+                ) from exc
+            except (APIError, OpenAIError) as exc:
+                raise AgentHarnessError(f"LLM request failed: {exc}") from exc
 
             assistant_message = completion.choices[0].message
             tool_calls = assistant_message.tool_calls or []
 
+            # ── LLM answered directly (no tools needed) → done ──────
             if not tool_calls:
-                return assistant_message.content or ""
+                return (assistant_message.content or ""), tool_results
 
+            # ── Execute tools and feed results back ──────────────────
             messages.append(assistant_message.model_dump(exclude_none=True))
+
             for tool_call in tool_calls:
                 result = self.registry.execute(
                     tool_call.function.name,
@@ -157,17 +128,30 @@ class AgentHarness:
                     "content": self._tool_result_content(result),
                 })
 
+            # ── Force final answer if we've hit the round limit ──────
             if round_index == max_rounds - 1:
                 messages.append({
                     "role": "system",
-                    "content": "Tool rounds exhausted. Give the best final answer.",
+                    "content": (
+                        "The maximum number of tool rounds has been reached. "
+                        "Give the best possible final answer using only the "
+                        "tool results already available. If the evidence is "
+                        "insufficient, say what is missing."
+                    ),
                 })
 
-        final = await self.client.chat.completions.create(
-            model=settings.llm_model,
-            messages=messages,
-        )
-        return final.choices[0].message.content or ""
+        # ── Final LLM call after tool rounds exhausted ───────────────
+        try:
+            final = await self.client.chat.completions.create(
+                model=settings.llm_model,
+                messages=messages,
+            )
+        except (APIError, OpenAIError) as exc:
+            raise AgentHarnessError(f"LLM final-answer request failed: {exc}") from exc
+
+        return (final.choices[0].message.content or ""), tool_results
+
+    # ── Internal helpers ─────────────────────────────────────────────
 
     def _build_initial_messages(
         self,
@@ -175,6 +159,7 @@ class AgentHarness:
         repository: str,
         used_cached_data: bool,
     ) -> list[dict[str, Any]]:
+        """Build the initial message array for a chat request."""
         freshness = "cached repository state" if used_cached_data else "freshly synced repository state"
         history = [
             {"role": message.role, "content": message.content}
@@ -203,6 +188,7 @@ class AgentHarness:
         ]
 
     def _tool_result_content(self, result: ToolResult) -> str:
+        """Serialize a ToolResult for the LLM to consume as tool response."""
         return json.dumps(
             {
                 "tool": result.call.name,

@@ -208,7 +208,7 @@ async def reply_to_webhook_event(event_id: str) -> dict:
             ),
         },
     ]
-    reply_text = await harness.run(messages, snapshot)
+    reply_text, _ = await harness.run(messages, snapshot)
 
     if not reply_text:
         raise HTTPException(status_code=502, detail="Failed to generate reply")
