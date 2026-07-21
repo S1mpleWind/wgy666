@@ -142,8 +142,10 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
     for issue in snapshot.issues:
         if issue.state != "closed":
             continue
-        text = f"{issue.title} {issue.body or ''}".lower()
-        kws = ",".join(sorted(_extract_keywords(text))[:5])
+        text = issue.title.lower()
+        kws = ",".join(sorted(_extract_keywords(text))[:3])
+        if not kws:
+            continue
         key = f"{issue.classification.category.value}:{kws}"
         groups.setdefault(key, []).append({
             "number": issue.number,

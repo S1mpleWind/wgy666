@@ -274,7 +274,7 @@ async def fix_webhook_event(event_id: str) -> dict:
         issue_title=record.issue_title,
         issue_category=record.classification.category.value,
         issue_body=body_str,
-        files_changed=[c.path for c in result.branch_name],
+        files_changed=[],
         fix_summary=f"Auto-fix for: {record.issue_title}",
     )
 
