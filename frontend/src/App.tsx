@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import type { FormEvent } from 'react'
 import {
-  Activity, AlertCircle, ArrowRight, Bell, Bot, ChevronDown, CircleDot,
+  Activity, AlertCircle, ArrowRight, Bell, BookOpen, Bot, ChevronDown, CircleDot,
   Database, FolderGit, GitBranch, LayoutDashboard, Loader2, Network,
   RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Star,
 } from 'lucide-react'
