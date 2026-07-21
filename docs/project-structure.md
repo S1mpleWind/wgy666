@@ -53,7 +53,8 @@ backend/
 │   │   ├── health.py        #   GET /api/health
 │   │   ├── repositories.py  #   POST /sync, GET list/detail
 │   │   ├── repository_tools.py  # 文件内容查询
-│   │   └── issues.py        #   POST /issues/analyze
+│   │   ├── issues.py        #   POST /issues/analyze
+│   │   └── faq.py           #   FAQ 知识库管理 CRUD + 自动生成
 │   │
 │   ├── assistant/           # LLM 仓库问答智能体
 │   │   ├── router.py        #   POST /api/assistant/chat
@@ -61,50 +62,76 @@ backend/
 │   │   ├── tool_registry.py #   7 个工具的 OpenAI function-calling 定义
 │   │   └── tools.py         #   工具实现 (overview, search_files 等)
 │   │
-│   ├── webhooks/            # 🔔 GitHub Webhook（你的模块）
-│   │   ├── router.py        #   POST /github, GET /events, GET /events/{id}, GET /config
-│   │   ├── handler.py       #   签名验证 + 事件分发 + Issue 处理
+│   ├── webhooks/            # 🔔 GitHub Webhook
+│   │   ├── router.py        #   POST /github, GET /events, GET /config, PATCH /events/{id}
+│   │   ├── handler.py       #   签名验证 + 事件分发 + Issue 处理 + 持久化
 │   │   └── auto_reply.py    #   LLM 自动回复生成
 │   │
-│   ├── schemas/             # Pydantic v2 模型（前后端 API 契约）
+│   ├── schemas/             # Pydantic v2 模型
 │   │   ├── repository.py    #   RepositorySnapshot, ClassifiedFile 等
-│   │   ├── issue.py         #   IssueCategory, IssueClassification
+│   │   ├── issue.py         #   IssueCategory, IssueClassification + auto_reply_draft
 │   │   ├── assistant.py     #   Chat request/response, FreshnessMode
+│   │   ├── knowledge.py     #   KnowledgeNode/Edge/Chunk/SearchResult
 │   │   ├── project_analysis.py  # 项目结构分析结果
-│   │   ├── repository_tools.py  # 查询工具响应模型
-│   │   └── knowledge.py     #   KnowledgeNode/Edge/Chunk/SearchResult
+│   │   └── repository_tools.py  # 查询工具响应模型
 │   │
 │   ├── services/            # 无状态业务逻辑
-│   │   ├── github_client.py     # HTTPX 异步 GitHub REST API 客户端
+│   │   ├── github_client.py     # HTTPX 异步 GitHub REST API 客户端（含重试）
+│   │   ├── git_clone.py         # git clone 源码拉取（含重试）
 │   │   ├── repository_sync.py   # 同步编排：拉取→分类→组装快照
 │   │   ├── repository_url.py    # GitHub URL 解析 → RepositoryRef
 │   │   ├── repository_query.py  # 查询门面（缓存/刷新策略）
 │   │   ├── file_classifier.py   # 文件规则分类（10 类）
-│   │   ├── issue_classifier.py  # Issue 规则分类（9 类 + UNKNOWN）
+│   │   ├── issue_classifier.py  # Issue 两阶段分类（LLM + 规则）
 │   │   ├── project_analysis.py  # 项目结构分析
 │   │   ├── knowledge_graph.py   # 图结构 RAG 构建 + 关键词检索
-│   │   └── embeddings.py        # 文本→向量（OpenAI API / 哈希回退）
+│   │   ├── embeddings.py        # 文本→向量（三级降级）
+│   │   ├── auto_fix.py          # 自动修复管线（Harness → 分支 → PR）
+│   │   ├── faq_service.py       # FAQ 知识库匹配（向量 + 关键词）
+│   │   └── memory_service.py    # 长期记忆记录 + 相似修复查询
 │   │
 │   ├── storage/             # 数据存储适配器
 │   │   ├── __init__.py      #   按 DATABASE_URL 选择存储后端
 │   │   ├── memory.py        #   内存存储（默认，重启丢失）
 │   │   ├── postgres.py      #   SQLite/PostgreSQL 持久化存储
-│   │   └── database.py      #   SQLAlchemy 表定义 + pgvector
+│   │   └── database.py      #   SQLAlchemy 表定义 + pgvector（12 表）
 │   │
 │   └── core/
 │       └── config.py        # Pydantic-settings 配置（所有环境变量）
 │
 ├── tests/                   # 测试
-│   ├── test_webhooks/       #   Webhook 模块测试 (44 个)
+│   ├── test_webhooks/       #   Webhook 模块测试 (49+)
 │   ├── test_assistant/      #   Agent 测试（需 LLM_API_KEY）
-│   ├── test_services/       #   服务层测试（embeddings, sync, tools）
+│   ├── test_services/       #   服务层测试
 │   └── test_project_analysis.py
 │
-├── data/                    # SQLite 数据库文件（本地开发）
-│   └── issuescope.db
+├── scripts/                 # 运维脚本
+│   ├── setup-db.sh          #   PostgreSQL 启动 + 配置
+│   ├── setup-backend.sh     #   Python 依赖 + 环境检查 + 交互式启动
+│   └── setup-frp.sh         #   frp 内网穿透配置
+│
+├── docs/                    # 文档
+│   ├── deploy-guide.md
+│   ├── project-structure.md
+│   ├── pipeline.md
+│   ├── data-structure.md
+│   └── rest-api-docs.md
+│
+├── frontend/src/            # TypeScript 源码
+│   ├── App.tsx              # 主应用（含侧边栏导航）
+│   ├── FaqPage.tsx          # FAQ 知识库管理页面
+│   ├── components/          # UI 组件
+│   │   ├── IssueModals.tsx  #   Issue 详情 + 回复/修复弹窗
+│   │   ├── ChatSidebar.tsx  #   聊天面板
+│   │   ├── FileBrowser.tsx  #   文件浏览器
+│   │   └── ...
+│   └── api.ts               # HTTP 客户端 + 类型定义
+│
+├── data/                    # SQLite 数据库文件
 ├── .env                     # 环境变量（不提交）
 ├── pyproject.toml           # 依赖管理
-└── CLAUDE.md                # 项目文档（已废弃，以本文档为准）
+├── docker-compose.yml       # PostgreSQL + pgvector
+└── CLAUDE.md                # 项目指导文件
 ```
 
 ---
@@ -252,8 +279,11 @@ tests/
 
 | 负责人 | 模块 | 依赖上游 | 被谁依赖 |
 |--------|------|---------|---------|
-| **jyf（你）** | webhooks/ | IssueClassifier | 前端通知 |
-| **jyf** | github_client 写操作 | GitHub API | auto_reply → 发评论 |
+| **jyf** | webhooks/ | IssueClassifier, GitHubClient | 前端通知、回复、修复 |
+| **jyf** | auto_fix.py | AgentHarness, GitHubClient | POST /events/{id}/fix |
+| **jyf** | auto_reply.py | AgentHarness | POST /events/{id}/reply |
+| **jyf** | faq_service.py / faq.py | EmbeddingService, LLM | FAQ 匹配 + 管理 API |
+| **jyf** | memory_service.py | 数据库 | 修复记忆记录 |
 | **ykz** | assistant/（Harness + Tools） | RepositoryQueryService, KnowledgeGraphService | 前端聊天面板 |
 | **ykz** | storage/postgres.py | database.py（SQLAlchemy） | API routes |
 | **yjq** | knowledge_graph.py | EmbeddingService | Agent 的 knowledge_graph_search 工具 |
