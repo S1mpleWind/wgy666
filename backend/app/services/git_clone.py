@@ -133,7 +133,10 @@ class GitCloneService:
             try:
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
-                process.kill()
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
                 last_error = f"git clone timed out after {timeout}s"
                 if attempt < max_retries:
                     delay = 3 * (attempt + 1)

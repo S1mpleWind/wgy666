@@ -7,7 +7,9 @@ import {
 } from 'lucide-react'
 import './App.css'
 
-import { fetchProjectStructure, fetchWebhookConfig, fetchWebhookEventDetail, fetchWebhookEvents, syncRepository, updateWebhookEvent } from './api'
+import { fetchProjectStructure, fetchRepositoryList, fetchRepositorySnapshot, fetchWebhookConfig, fetchWebhookEventDetail, fetchWebhookEvents, syncRepository, updateWebhookEvent } from "./api"
+import FaqPage from "./FaqPage"
+// extra imports from './api'
 import type { GitHubIssue, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
 
 import { ProjectStructureDetails } from './ProjectStructureDetails'
@@ -133,6 +135,22 @@ function App() {
     // Initial fetch
     fetchWebhookEvents(20).then(setWebhookEvents).catch(() => {})
     return () => clearInterval(poll)
+  }, [])
+
+  // -- Auto-load cached repos on mount -----------------------------------
+
+  useEffect(() => {
+    async function loadExisting() {
+      try {
+        const repos = await fetchRepositoryList()
+        if (repos.length > 0) {
+          const snap = await fetchRepositorySnapshot(repos[0].owner, repos[0].name)
+          setSnapshot(snap)
+          setForm({ ...defaultForm, url: repos[0].html_url })
+        }
+      } catch { /* no cached repos */ }
+    }
+    loadExisting()
   }, [])
 
   // -- Sync form handler --------------------------------------------------

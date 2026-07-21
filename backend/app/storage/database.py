@@ -167,6 +167,38 @@ webhook_events = Table(
     Column("received_at", DateTime(timezone=True), nullable=False),
 )
 
+# -- Knowledge & Memory ----------------------------------------------------
+
+faq_entries = Table(
+    "faq_entries",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("question", Text, nullable=False),
+    Column("answer", Text, nullable=False),
+    Column("keywords", JSON, nullable=False, default=list),
+    Column("related_issue_ids", JSON, nullable=False, default=list),
+    Column("hit_count", Integer, nullable=False, default=0),
+    Column("is_confirmed", Boolean, nullable=False, default=False),
+    Column("embedding", VectorType(settings.embedding_dimensions)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
+fix_memory_logs = Table(
+    "fix_memory_logs",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("issue_title", Text, nullable=False),
+    Column("issue_category", String(64), nullable=False),
+    Column("issue_keywords", JSON, nullable=False, default=list),
+    Column("files_changed", JSON, nullable=False, default=list),
+    Column("fix_summary", Text, nullable=False),
+    Column("pattern_type", String(128)),
+    Column("pattern_detail", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+
 
 knowledge_nodes = Table(
     "knowledge_nodes",

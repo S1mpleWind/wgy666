@@ -170,6 +170,34 @@ export type ProjectStructureResponse = {
 
 // -- API calls -------------------------------------------------------------
 
+export type RepositoryListItem = {
+  owner: string
+  name: string
+  full_name: string
+  html_url: string
+  description: string | null
+  synced_at: string
+  issue_count: number
+  file_count: number
+}
+
+/** List synced repositories. */
+export async function fetchRepositoryList(): Promise<RepositoryListItem[]> {
+  const response = await fetch(`${API_BASE_URL}/api/repositories`)
+  if (!response.ok) throw new Error(`Failed to list repos: ${response.status}`)
+  return response.json()
+}
+
+/** Load a cached repository snapshot (no sync, instant). */
+export async function fetchRepositorySnapshot(owner: string, name: string): Promise<RepositorySnapshot> {
+  const response = await fetch(`${API_BASE_URL}/api/repositories/${owner}/${name}`)
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to load repo: ${response.status}`)
+  }
+  return response.json()
+}
+
 /** Trigger a full repository sync: fetch → classify → cache. */
 export async function syncRepository(payload: SyncRepositoryPayload): Promise<RepositorySnapshot> {
   const response = await fetch(`${API_BASE_URL}/api/repositories/sync`, {

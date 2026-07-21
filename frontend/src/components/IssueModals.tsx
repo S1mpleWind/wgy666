@@ -24,29 +24,35 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
   const [replySource, setReplySource] = useState<string | undefined>(undefined)
   const [fixStatus, setFixStatus] = useState<'idle' | 'posting' | 'done' | 'error'>('idle')
   const [fixUrl, setFixUrl] = useState('')
+  const [replyError, setReplyError] = useState('')
+  const [fixError, setFixError] = useState('')
   const classification = event.classification
   const ghUrl = `https://github.com/${event.repository}/issues/${event.issue_number}`
   const cat = classification?.category ?? ''
 
   async function handleConfirmReply() {
     setReplyStatus('posting')
+    setReplyError('')
     try {
       const result = await postWebhookReply(event.event_id)
       setReplyUrl(result.comment_url)
       setReplySource(result.source)
       setReplyStatus('done')
-    } catch {
+    } catch (exc) {
+      setReplyError(exc instanceof Error ? exc.message : '回复失败')
       setReplyStatus('error')
     }
   }
 
   async function handleConfirmFix() {
     setFixStatus('posting')
+    setFixError('')
     try {
       const result = await postAutoFix(event.event_id)
       setFixUrl(result.pr_url)
       setFixStatus('done')
-    } catch {
+    } catch (exc) {
+      setFixError(exc instanceof Error ? exc.message : '修复失败')
       setFixStatus('error')
     }
   }
@@ -155,7 +161,7 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
           )}
           {replyStatus === 'error' && (
             <div style={{ marginTop: 8, fontSize: 13, color: '#b42318' }}>
-              回复发布失败。
+              回复发布失败。{replyError && <span style={{ marginLeft: 4, fontSize: 11, color: "#6a747e" }}>({replyError})</span>}
               <button className="ghost-button" onClick={handleConfirmReply} style={{ marginLeft: 8, minHeight: 30, padding: '0 10px' }}>
                 重试
               </button>
@@ -186,7 +192,7 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
           )}
           {fixStatus === 'error' && (
             <div style={{ marginTop: 8, fontSize: 13, color: '#b42318' }}>
-              自动修复失败。
+              自动修复失败。{fixError && <span style={{ marginLeft: 4, fontSize: 11, color: "#6a747e" }}>({fixError})</span>}
               <button className="ghost-button" onClick={handleConfirmFix} style={{ marginLeft: 8, minHeight: 30, padding: '0 10px' }}>
                 重试
               </button>

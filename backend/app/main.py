@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(issues.router, prefix="/api")
     app.include_router(assistant_router, prefix="/api")
     app.include_router(webhooks_router, prefix="/api")
+    app.include_router(faq_router, prefix="/api")
     return app
 
 
