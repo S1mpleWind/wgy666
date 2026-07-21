@@ -211,6 +211,7 @@ class GitCloneService:
                 # 等待进程完成（含超时控制）
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
+                # 超时：杀掉进程，等待递增延迟后重试
                 try:
                     process.kill()
                 except ProcessLookupError:
