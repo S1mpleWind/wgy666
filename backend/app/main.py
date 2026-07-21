@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.assistant.router import router as assistant_router
 from app.api.routes import health, issues, repositories, repository_tools
 from app.core.config import settings
+from app.api.routes.faq import router as faq_router
 from app.webhooks.router import router as webhooks_router
 
 

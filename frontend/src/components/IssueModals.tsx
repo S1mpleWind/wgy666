@@ -21,6 +21,7 @@ type IssueDetailModalProps = {
 function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
   const [replyStatus, setReplyStatus] = useState<'idle' | 'posting' | 'done' | 'error'>('idle')
   const [replyUrl, setReplyUrl] = useState('')
+  const [replySource, setReplySource] = useState<string | undefined>(undefined)
   const [fixStatus, setFixStatus] = useState<'idle' | 'posting' | 'done' | 'error'>('idle')
   const [fixUrl, setFixUrl] = useState('')
   const classification = event.classification
@@ -32,6 +33,7 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
     try {
       const result = await postWebhookReply(event.event_id)
       setReplyUrl(result.comment_url)
+      setReplySource(result.source)
       setReplyStatus('done')
     } catch {
       setReplyStatus('error')
@@ -144,6 +146,11 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
             <div style={{ marginTop: 8, fontSize: 13, color: '#18794e' }}>
               回复已发布 →
               <a href={replyUrl} target="_blank" style={{ marginLeft: 4 }}>查看评论</a>
+              {replySource && (
+                <span style={{ marginLeft: 8, fontSize: 11, color: '#6a747e' }}>
+                  （来源: {replySource === 'faq' ? 'FAQ 知识库' : 'LLM Agent'})
+                </span>
+              )}
             </div>
           )}
           {replyStatus === 'error' && (

@@ -280,7 +280,7 @@ export async function updateWebhookEvent(eventId: string, action: 'read' | 'dele
 }
 
 /** Post an auto-reply for a webhook event via AgentHarness. */
-export async function postWebhookReply(eventId: string): Promise<{ status: string; reply_text: string; comment_url: string }> {
+export async function postWebhookReply(eventId: string): Promise<{ status: string; reply_text: string; comment_url: string; source?: string }> {
   const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/reply`, {
     method: 'POST',
   })

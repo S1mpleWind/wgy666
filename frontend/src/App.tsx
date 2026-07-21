@@ -37,7 +37,7 @@ const defaultForm = {
   max_tree_items: 600,
 }
 
-type WorkspaceSection = 'overview' | 'analysis' | 'issues' | 'agent'
+type WorkspaceSection = 'overview' | 'analysis' | 'issues' | 'agent' | 'faq'
 
 function App() {
   const [form, setForm] = useState(defaultForm)
@@ -267,6 +267,7 @@ function App() {
           <button aria-pressed={activeWorkspaceSection === 'analysis'} className={activeWorkspaceSection === 'analysis' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('analysis')}><Network size={17} />项目解析</button>
           <button aria-pressed={activeWorkspaceSection === 'issues'} className={activeWorkspaceSection === 'issues' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('issues')}><Activity size={17} />Issue 智能分析</button>
           <button aria-pressed={activeWorkspaceSection === 'agent'} className={activeWorkspaceSection === 'agent' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('agent')}><Bot size={17} />仓库问答</button>
+          <button aria-pressed={activeWorkspaceSection === 'faq'} className={activeWorkspaceSection === 'faq' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('faq')}><BookOpen size={17} />FAQ 知识库</button>
         </nav>
 
         <div className="sidebar-actions">

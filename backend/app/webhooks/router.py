@@ -183,6 +183,24 @@ async def reply_to_webhook_event(event_id: str) -> dict:
     labels_str = ", ".join(record.issue_labels) if record.issue_labels else "(none)"
     body_str = (record.raw_payload.get("issue", {}).get("body")) or "(no body provided)"
 
+    # ── Check FAQ first ──────────────────────────────────────────
+    from app.services.faq_service import faq_match
+    faq_result = await faq_match(
+        record.issue_title, body_str, owner, name,
+    )
+    if faq_result and faq_result["answer"]:
+        reply_text = f"{faq_result['answer']}\n\n---\n_🤖 此回复来自 FAQ 知识库（匹配度 {faq_result['score']:.0%}）_"
+        ref = parse_github_repository_url(f"https://github.com/{record.repository}")
+        async with GitHubClient() as gh:
+            comment = await gh.comment_on_issue(ref, record.issue_number, reply_text)
+        return {
+            "status": "ok",
+            "reply_text": reply_text,
+            "comment_url": comment.get("html_url", ""),
+            "event_id": event_id,
+            "source": "faq",
+        }
+
     messages = [
         {
             "role": "system",
@@ -248,6 +266,17 @@ async def fix_webhook_event(event_id: str) -> dict:
 
     if not result.success:
         raise HTTPException(status_code=502, detail=result.error or "Auto-fix failed")
+
+    # Log fix into long-term memory.
+    from app.services.memory_service import log_fix_memory
+    await log_fix_memory(
+        owner=owner, name=name,
+        issue_title=record.issue_title,
+        issue_category=record.classification.category.value,
+        issue_body=body_str,
+        files_changed=[c.path for c in result.branch_name],
+        fix_summary=f"Auto-fix for: {record.issue_title}",
+    )
 
     return {
         "status": "ok",
