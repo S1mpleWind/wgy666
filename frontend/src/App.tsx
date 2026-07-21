@@ -440,7 +440,13 @@ function App() {
           </div>
         )}
 
-        {!snapshot ? (
+        {activeWorkspaceSection === 'faq' ? (
+          snapshot ? (
+            <FaqPage owner={snapshot.identity.owner} name={snapshot.identity.name} />
+          ) : (
+            <p className="muted" style={{ padding: 40, textAlign: 'center' }}>请先同步仓库以查看 FAQ</p>
+          )
+        ) : !snapshot ? (
           <EmptyState isLoading={isLoading} />
         ) : (
           <>
