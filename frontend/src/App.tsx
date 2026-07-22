@@ -9,8 +9,7 @@ import './App.css'
 
 import { fetchProjectStructure, fetchRepositoryList, fetchRepositorySnapshot, fetchWebhookConfig, fetchWebhookEventDetail, fetchWebhookEvents, syncRepository, updateWebhookEvent } from "./api"
 import FaqPage from "./FaqPage"
-// extra imports from './api'
-import type { GitHubIssue, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
+import type { GitHubIssue, RepositoryListItem, RepositorySnapshot, WebhookEventDetail, WebhookEventItem } from './api'
 
 import { ProjectStructureDetails } from './ProjectStructureDetails'
 import type { AnalysisSection, ProjectStructureAnalysis } from './ProjectStructureDetails'
@@ -44,6 +43,7 @@ type WorkspaceSection = 'overview' | 'analysis' | 'issues' | 'agent' | 'faq'
 function App() {
   const [form, setForm] = useState(defaultForm)
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null)
+  const [repoList, setRepoList] = useState<RepositoryListItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -137,20 +137,24 @@ function App() {
     return () => clearInterval(poll)
   }, [])
 
-  // -- Auto-load cached repos on mount -----------------------------------
+  // -- Load synced repo list on mount + auto-select last one ----------------
 
   useEffect(() => {
-    async function loadExisting() {
+    (async () => {
       try {
         const repos = await fetchRepositoryList()
+        setRepoList(repos)
         if (repos.length > 0) {
-          const snap = await fetchRepositorySnapshot(repos[0].owner, repos[0].name)
-          setSnapshot(snap)
-          setForm({ ...defaultForm, url: repos[0].html_url })
+          const last = localStorage.getItem('lastRepo') || `${repos[0].owner}/${repos[0].name}`
+          const match = repos.find(r => `${r.owner}/${r.name}` === last)
+          if (match) {
+            const snap = await fetchRepositorySnapshot(match.owner, match.name)
+            setSnapshot(snap)
+            setForm(f => ({ ...f, url: match.html_url }))
+          }
         }
       } catch { /* no cached repos */ }
-    }
-    loadExisting()
+    })()
   }, [])
 
   // -- Sync form handler --------------------------------------------------
@@ -240,6 +244,26 @@ function App() {
           </div>
         </div>
 
+        {/* Repository selector */}
+        {repoList.length > 1 && (
+          <div className="repo-selector">
+            <label style={{ fontSize: 11, color: '#6a747e', marginBottom: 4 }}>当前仓库</label>
+            <select
+              value={snapshot?.identity.full_name ?? ''}
+              onChange={async (e) => {
+                const [owner, name] = e.target.value.split('/')
+                localStorage.setItem('lastRepo', e.target.value)
+                const snap = await fetchRepositorySnapshot(owner, name)
+                setSnapshot(snap)
+                setForm(f => ({ ...f, url: snap.identity.html_url }))
+              }}
+            >
+              {repoList.map(r => (
+                <option key={r.full_name} value={r.full_name}>{r.full_name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <form className="sync-form sync-card" onSubmit={handleSubmit}>
           <div className="sync-card-heading">
             <div>

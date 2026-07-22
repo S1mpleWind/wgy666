@@ -885,6 +885,29 @@ input:focus {
 
 /* -- FAQ page ------------------------------------------------------------- */
 
+.repo-selector {
+  margin-bottom: 4px;
+}
+
+.repo-selector select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5dd;
+  border-radius: 7px;
+  background: #fff;
+  color: #182027;
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 11px;
+  cursor: pointer;
+}
+
+.repo-selector select:focus {
+  border-color: #2d6cdf;
+  box-shadow: 0 0 0 3px rgba(45, 108, 223, 0.14);
+  outline: none;
+}
+
 .faq-page {
   display: grid;
   gap: 16px;
