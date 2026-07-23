@@ -8,7 +8,6 @@ import sys
 from typing import Any
 
 from app.schemas.assistant import AssistantCitation, AssistantToolCall
-from app.schemas.project_analysis import ProjectAnalysis
 from app.schemas.repository import RepositorySnapshot
 from app.services.knowledge_graph import KnowledgeGraphService
 from app.services.project_analysis import ProjectAnalysisService
@@ -119,10 +118,12 @@ class RepositoryAssistantTools:
         return self._run_command("run_tests", command, {"path": path, "test_name": test_name})
 
     def embedding_status(self, snapshot: RepositorySnapshot) -> ToolResult:
-        remote = bool(settings.embedding_api_key)
-        local = settings.local_embedding_enabled
-        mode = "remote OpenAI-compatible API" if remote else ("local sentence-transformers" if local else "hash fallback")
-        body = f"Embedding backend: {mode}\nConfigured dimensions: {settings.embedding_dimensions}"
+        from app.services.embeddings import EmbeddingService
+
+        mode, error = EmbeddingService.backend_status()
+        body = f"Embedding backend actually used: {mode}\nConfigured dimensions: {settings.embedding_dimensions}"
+        if error:
+            body += f"\nLast fallback reason: {error[:300]}"
         return self._simple("embedding_status", {}, body)
 
     def _file(self, snapshot: RepositorySnapshot, path: str) -> dict[str, Any] | None:

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+import logging
 
 from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.embeddings import EmbeddingService
+
+logger = logging.getLogger(__name__)
 
 # Common stop words to ignore when building keyword sets.
 _STOP_WORDS = frozenset({
@@ -36,7 +38,7 @@ async def faq_match(
     2. LLM judgement — ask a lightweight LLM call if the issue matches.
     3. Keyword fallback — when vector is unavailable or LLM fails.
     """
-    from app.storage.database import faq_entries, create_database_engine
+    from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import select, text
 
     if not settings.database_url:
@@ -47,6 +49,9 @@ async def faq_match(
 
     try:
         with engine.connect() as conn:
+            repository_id = find_repository_id(conn, owner, name)
+            if repository_id is None:
+                return None
             dialect = conn.dialect.name
             candidates: list[dict] = []
 
@@ -58,11 +63,16 @@ async def faq_match(
                         """SELECT id, question, answer, hit_count,
                                   1 - (embedding <=> CAST(:q AS vector)) AS score
                            FROM faq_entries
-                           WHERE embedding IS NOT NULL AND is_confirmed = TRUE
+                           WHERE repository_id = :repository_id
+                             AND embedding IS NOT NULL
+                             AND is_confirmed = TRUE
                            ORDER BY embedding <=> CAST(:q AS vector)
                            LIMIT 3"""
                     ),
-                    {"q": "[" + ",".join(f"{v:.8f}" for v in embedding) + "]"},
+                    {
+                        "q": "[" + ",".join(f"{v:.8f}" for v in embedding) + "]",
+                        "repository_id": repository_id,
+                    },
                 ).mappings().all()
                 for r in rows:
                     if float(r["score"]) >= 0.7:
@@ -74,7 +84,6 @@ async def faq_match(
                 if match:
                     _hit(conn, match["id"])
                     conn.commit()
-                    engine.dispose()
                     return match
 
             # ── Stage 3: keyword fallback ─────────────────────────────
@@ -85,7 +94,10 @@ async def faq_match(
                         faq_entries.c.id, faq_entries.c.question,
                         faq_entries.c.answer, faq_entries.c.keywords,
                         faq_entries.c.hit_count,
-                    ).where(faq_entries.c.is_confirmed == True)  # noqa: E712
+                    ).where(
+                        faq_entries.c.repository_id == repository_id,
+                        faq_entries.c.is_confirmed == True,  # noqa: E712
+                    )
                 ).mappings().all()
 
                 for row in all_entries:
@@ -96,7 +108,6 @@ async def faq_match(
                     if overlap >= 2 or (overlap >= 1 and len(query_kws) <= 2):
                         _hit(conn, row["id"])
                         conn.commit()
-                        engine.dispose()
                         return {
                             "id": row["id"],
                             "question": row["question"],
@@ -105,8 +116,8 @@ async def faq_match(
                             "source": "faq_keyword",
                         }
 
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("FAQ lookup failed for %s/%s: %s", owner, name, exc)
     finally:
         engine.dispose()
 

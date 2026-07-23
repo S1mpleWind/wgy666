@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     embedding_api_key: str | None = Field(default=None, validation_alias="EMBEDDING_API_KEY")
     embedding_model: str = Field(default="text-embedding-3-small", validation_alias="EMBEDDING_MODEL")
     embedding_dimensions: int = Field(default=1536, validation_alias="EMBEDDING_DIMENSIONS")
+    embedding_batch_size: int = Field(default=64, validation_alias="EMBEDDING_BATCH_SIZE", ge=1, le=256)
 
     # Local embedding (sentence-transformers) — off by default.
     # When enabled, the local model takes priority over the remote API.

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from collections import Counter
 import json
-import re
 
 from openai import AsyncOpenAI
 
@@ -130,17 +129,18 @@ class IssueClassifier:
         body: str | None,
         labels: list[str],
     ) -> IssueClassification:
-        """Two-stage classification: LLM first, rule fallback.
-
-        When the LLM is available, it always runs — the rule result is
-        used only as a fallback when the LLM call fails.
-        """
-        if self._llm_available:
+        """Use rules first and call the LLM only for uncertain results."""
+        rule_result = self.classify(title, body, labels)
+        uncertain = (
+            rule_result.category == IssueCategory.UNKNOWN
+            or rule_result.confidence <= _LLM_THRESHOLD
+        )
+        if self._llm_available and uncertain:
             llm_result = await self._llm_classify(title, body, labels)
             if llm_result is not None:
                 return llm_result
 
-        return self.classify(title, body, labels)
+        return rule_result
 
     async def _llm_classify(
         self,

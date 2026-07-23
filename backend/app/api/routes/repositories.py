@@ -1,5 +1,7 @@
 """Repository sync and listing endpoints."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.repository import RepositoryListItem, RepositorySnapshot, SyncRepositoryRequest
@@ -11,7 +13,11 @@ from app.storage import repository_store
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
 
-@router.post("/sync", response_model=RepositorySnapshot)
+@router.post(
+    "/sync",
+    response_model=RepositorySnapshot,
+    response_model_exclude={"source_contents"},
+)
 async def sync_repository(payload: SyncRepositoryRequest) -> RepositorySnapshot:
     """Fetch repository data from GitHub, classify files and issues, cache the snapshot.
 
@@ -38,7 +44,7 @@ async def sync_repository(payload: SyncRepositoryRequest) -> RepositorySnapshot:
             detail=str(exc) + " | 提示：git clone 失败，通常是网络问题，请检查服务器能否访问 GitHub 或稍后重试",
         ) from exc
 
-    repository_store.save(snapshot)
+    await asyncio.to_thread(repository_store.save, snapshot)
     return snapshot
 
 
@@ -48,7 +54,11 @@ async def list_repositories() -> list[RepositoryListItem]:
     return repository_store.list()
 
 
-@router.get("/{owner}/{name}", response_model=RepositorySnapshot)
+@router.get(
+    "/{owner}/{name}",
+    response_model=RepositorySnapshot,
+    response_model_exclude={"source_contents"},
+)
 async def get_repository(owner: str, name: str) -> RepositorySnapshot:
     """Return the cached snapshot for a previously synced repository."""
     snapshot = repository_store.get(owner, name)

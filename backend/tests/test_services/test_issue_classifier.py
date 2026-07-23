@@ -139,3 +139,24 @@ def test_async_classify_passes_through_confident_rules():
     )
     assert result.category == IssueCategory.BUG
     assert result.confidence > 0.6
+
+
+def test_async_classify_does_not_call_llm_for_confident_rule(monkeypatch):
+    """Confident rule matches avoid unnecessary remote model calls."""
+    import asyncio
+
+    classifier = IssueClassifier()
+    classifier._llm_available = True
+
+    async def unexpected_llm_call(*args, **kwargs):
+        raise AssertionError("LLM should not be called for a confident rule result")
+
+    monkeypatch.setattr(classifier, "_llm_classify", unexpected_llm_call)
+    result = asyncio.run(
+        classifier.async_classify(
+            title="Bug: crash with exception",
+            body="error traceback fail",
+            labels=["bug"],
+        )
+    )
+    assert result.category == IssueCategory.BUG

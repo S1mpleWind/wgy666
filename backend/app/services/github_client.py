@@ -169,10 +169,10 @@ class GitHubClient:
         raw = payload.get("content")
         if not raw:
             return None, False
-        decoded = base64.b64decode(raw).decode("utf-8", errors="replace")
-        byte_length = len(decoded.encode("utf-8"))
-        truncated = byte_length > max_bytes or (payload.get("size") or 0) > max_bytes
-        return decoded[:max_bytes], truncated
+        decoded_bytes = base64.b64decode(raw)
+        truncated = len(decoded_bytes) > max_bytes or (payload.get("size") or 0) > max_bytes
+        decoded = decoded_bytes[:max_bytes].decode("utf-8", errors="ignore")
+        return decoded, truncated
 
     # -- Issues, PRs, Commits -----------------------------------------------
 
@@ -180,12 +180,30 @@ class GitHubClient:
         """Return recent issues (excludes PRs), sorted by last updated."""
         if limit <= 0:
             return []
-        payload = await self._get(
-            f"/repos/{ref.owner}/{ref.name}/issues",
-            params={"state": "all", "sort": "updated", "direction": "desc", "per_page": min(limit, 100)},
-        )
-        # The /issues endpoint includes PRs; filter them out.
-        return [issue for issue in payload[:limit] if "pull_request" not in issue]
+        issues: list[dict[str, Any]] = []
+        page = 1
+        per_page = min(100, max(limit, 30))
+        while len(issues) < limit:
+            payload = await self._get(
+                f"/repos/{ref.owner}/{ref.name}/issues",
+                params={
+                    "state": "all",
+                    "sort": "updated",
+                    "direction": "desc",
+                    "per_page": per_page,
+                    "page": page,
+                },
+            )
+            if not payload:
+                break
+            issues.extend(
+                issue for issue in payload
+                if "pull_request" not in issue
+            )
+            if len(payload) < per_page:
+                break
+            page += 1
+        return issues[:limit]
 
     async def get_pull_requests(self, ref: RepositoryRef, limit: int) -> list[dict[str, Any]]:
         """Return recent pull requests, sorted by last updated."""

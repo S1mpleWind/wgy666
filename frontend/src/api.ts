@@ -238,6 +238,7 @@ export type WebhookEventItem = {
   issue_author?: string | null
   issue_labels?: string[]
   classification: WebhookClassification | null
+  is_read: boolean
   received_at: string
 }
 
@@ -249,8 +250,8 @@ export type WebhookEventDetail = WebhookEventItem & {
 
 // -- API calls -------------------------------------------------------------
 
-/** Fetch webhook configuration (URL and secret) from the backend. */
-export async function fetchWebhookConfig(): Promise<{ url: string; secret: string }> {
+/** Fetch public webhook configuration status from the backend. */
+export async function fetchWebhookConfig(): Promise<{ url: string; secret_configured: boolean }> {
   const response = await fetch(`${API_BASE_URL}/api/webhooks/config`)
 
   if (!response.ok) {
@@ -261,8 +262,10 @@ export async function fetchWebhookConfig(): Promise<{ url: string; secret: strin
 }
 
 /** Fetch recent webhook events for the notification inbox. */
-export async function fetchWebhookEvents(limit = 20): Promise<WebhookEventItem[]> {
-  const response = await fetch(`${API_BASE_URL}/api/webhooks/events?limit=${limit}`)
+export async function fetchWebhookEvents(limit = 20, repository?: string): Promise<WebhookEventItem[]> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (repository) params.set('repository', repository)
+  const response = await fetch(`${API_BASE_URL}/api/webhooks/events?${params}`)
 
   if (!response.ok) {
     const error = await response.json().catch(() => null)
@@ -307,10 +310,12 @@ export async function updateWebhookEvent(eventId: string, action: 'read' | 'dele
   }
 }
 
-/** Post an auto-reply for a webhook event via AgentHarness. */
-export async function postWebhookReply(eventId: string): Promise<{ status: string; reply_text: string; comment_url: string; source?: string }> {
+/** Post the exact reply draft approved by the maintainer. */
+export async function postWebhookReply(eventId: string, replyText: string): Promise<{ status: string; reply_text: string; comment_url: string; source?: string }> {
   const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/reply`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reply_text: replyText }),
   })
 
   if (!response.ok) {
@@ -378,7 +383,7 @@ export async function askAssistant(payload: AssistantChatRequest): Promise<Assis
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      freshness: 'refresh_if_stale',
+      freshness: 'cache_first',
       history: [],
       ...payload,
     }),

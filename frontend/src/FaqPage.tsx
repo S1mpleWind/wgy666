@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { BookOpen, Check, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
@@ -21,34 +21,53 @@ export default function FaqPage({ owner, name }: { owner: string; name: string }
   const [showAdd, setShowAdd] = useState(false)
   const [newQuestion, setNewQuestion] = useState('')
   const [newAnswer, setNewAnswer] = useState('')
+  const [faqError, setFaqError] = useState('')
 
-  async function loadFaq() {
+  const loadFaq = useCallback(async () => {
     setLoading(true)
+    setFaqError('')
     try {
-      const res = await fetch(`${API_BASE_URL}/api/faq`)
-      if (res.ok) setEntries(await res.json())
+      const params = new URLSearchParams({ owner, name })
+      const res = await fetch(`${API_BASE_URL}/api/faq?${params}`)
+      if (!res.ok) throw new Error(await responseError(res, 'FAQ 加载失败'))
+      setEntries(await res.json())
+    } catch (error) {
+      setFaqError(error instanceof Error ? error.message : 'FAQ 加载失败')
     } finally {
       setLoading(false)
     }
-  }
+  }, [owner, name])
 
-  useEffect(() => { loadFaq() }, [])
+  useEffect(() => { loadFaq() }, [loadFaq])
 
   async function handleConfirm(id: number, confirmed: boolean) {
-    await fetch(`${API_BASE_URL}/api/faq/${id}?action=${confirmed ? 'confirm' : 'unconfirm'}`, { method: 'PATCH' })
-    loadFaq()
+    const params = new URLSearchParams({ owner, name, action: confirmed ? 'confirm' : 'unconfirm' })
+    const response = await fetch(`${API_BASE_URL}/api/faq/${id}?${params}`, { method: 'PATCH' })
+    if (!response.ok) {
+      setFaqError(await responseError(response, 'FAQ 更新失败'))
+      return
+    }
+    await loadFaq()
   }
 
   async function handleDelete(id: number) {
-    await fetch(`${API_BASE_URL}/api/faq/${id}`, { method: 'DELETE' })
-    loadFaq()
+    const params = new URLSearchParams({ owner, name })
+    const response = await fetch(`${API_BASE_URL}/api/faq/${id}?${params}`, { method: 'DELETE' })
+    if (!response.ok) {
+      setFaqError(await responseError(response, 'FAQ 删除失败'))
+      return
+    }
+    await loadFaq()
   }
 
   async function handleGenerate() {
     setGenerating(true)
     try {
-      await fetch(`${API_BASE_URL}/api/faq/generate?owner=${owner}&name=${name}`, { method: 'POST' })
-      loadFaq()
+      const response = await fetch(`${API_BASE_URL}/api/faq/generate?owner=${owner}&name=${name}`, { method: 'POST' })
+      if (!response.ok) throw new Error(await responseError(response, 'FAQ 自动生成失败'))
+      await loadFaq()
+    } catch (error) {
+      setFaqError(error instanceof Error ? error.message : 'FAQ 自动生成失败')
     } finally {
       setGenerating(false)
     }
@@ -56,15 +75,20 @@ export default function FaqPage({ owner, name }: { owner: string; name: string }
 
   async function handleAdd() {
     if (!newQuestion.trim() || !newAnswer.trim()) return
-    await fetch(`${API_BASE_URL}/api/faq`, {
+    const params = new URLSearchParams({ owner, name })
+    const response = await fetch(`${API_BASE_URL}/api/faq?${params}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: newQuestion, answer: newAnswer }),
     })
+    if (!response.ok) {
+      setFaqError(await responseError(response, 'FAQ 保存失败'))
+      return
+    }
     setShowAdd(false)
     setNewQuestion('')
     setNewAnswer('')
-    loadFaq()
+    await loadFaq()
   }
 
   return (
@@ -81,6 +105,8 @@ export default function FaqPage({ owner, name }: { owner: string; name: string }
           </button>
         </div>
       </div>
+
+      {faqError && <div className="notice error">{faqError}</div>}
 
       {showAdd && (
         <div className="faq-add-form">
@@ -126,4 +152,9 @@ export default function FaqPage({ owner, name }: { owner: string; name: string }
       )}
     </div>
   )
+}
+
+async function responseError(response: Response, fallback: string): Promise<string> {
+  const body = await response.json().catch(() => null)
+  return body?.detail ?? `${fallback}（${response.status}）`
 }

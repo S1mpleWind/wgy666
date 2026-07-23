@@ -48,7 +48,7 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showInbox, setShowInbox] = useState(false)
-  const [webhookConfig, setWebhookConfig] = useState<{ url: string; secret: string } | null>(null)
+  const [webhookConfig, setWebhookConfig] = useState<{ url: string; secret_configured: boolean } | null>(null)
   const [webhookEvents, setWebhookEvents] = useState<WebhookEventItem[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [analysisSection, setAnalysisSection] = useState<AnalysisSection | null>(null)
@@ -66,14 +66,14 @@ function App() {
   const loadEvents = useCallback(async () => {
     setEventsLoading(true)
     try {
-      const events = await fetchWebhookEvents(20)
+      const events = await fetchWebhookEvents(20, snapshot?.identity.full_name)
       setWebhookEvents(events)
     } catch {
       // silently fail — inbox just stays empty
     } finally {
       setEventsLoading(false)
     }
-  }, [])
+  }, [snapshot?.identity.full_name])
 
   useEffect(() => {
     if (showInbox) {
@@ -99,7 +99,7 @@ function App() {
       // Mark as read
       await updateWebhookEvent(event.event_id, 'read')
       setWebhookEvents(prev => prev.map(e =>
-        e.event_id === event.event_id ? { ...e } : e
+        e.event_id === event.event_id ? { ...e, is_read: true } : e
       ))
     } catch {
       setSelectedEvent(null)
@@ -112,7 +112,7 @@ function App() {
     try {
       await updateWebhookEvent(eventId, 'read')
       setWebhookEvents(prev => prev.map(e =>
-        e.event_id === eventId ? { ...e } : e
+        e.event_id === eventId ? { ...e, is_read: true } : e
       ))
     } catch { /* ignore */ }
   }
@@ -128,14 +128,14 @@ function App() {
   useEffect(() => {
     const poll = setInterval(async () => {
       try {
-        const events = await fetchWebhookEvents(20)
+        const events = await fetchWebhookEvents(20, snapshot?.identity.full_name)
         setWebhookEvents(events)
       } catch { /* ignore */ }
     }, 30000)
     // Initial fetch
-    fetchWebhookEvents(20).then(setWebhookEvents).catch(() => {})
+    fetchWebhookEvents(20, snapshot?.identity.full_name).then(setWebhookEvents).catch(() => {})
     return () => clearInterval(poll)
-  }, [])
+  }, [snapshot?.identity.full_name])
 
   // -- Load synced repo list on mount + auto-select last one ----------------
 
@@ -168,6 +168,7 @@ function App() {
     try {
       const result = await syncRepository(form)
       setSnapshot(result)
+      fetchRepositoryList().then(setRepoList).catch(() => {})
       setAnalysisSection(null)
       const fallback = analyzeProject(result)
       setProjectAnalysis(fallback)
@@ -316,7 +317,7 @@ function App() {
           <button className="ghost-button sidebar-action" onClick={() => setShowInbox(!showInbox)}>
             <span className="bell-wrapper">
               <Bell size={16} aria-hidden="true" />
-              {webhookEvents.length > 0 && <span className="badge-dot" />}
+              {webhookEvents.some(event => !event.is_read) && <span className="badge-dot" />}
             </span>
             通知
           </button>
@@ -390,8 +391,8 @@ function App() {
                         <p className="inbox-item-reason">{event.classification.reason}</p>
                       )}
                       <div className="inbox-item-actions">
-                        <button onClick={(e) => { e.stopPropagation(); handleReadEvent(event.event_id); }}>
-                          标为已读
+                        <button disabled={event.is_read} onClick={(e) => { e.stopPropagation(); handleReadEvent(event.event_id); }}>
+                          {event.is_read ? '已读' : '标为已读'}
                         </button>
                         <button className="delete-btn" onClick={(e) => { e.stopPropagation(); handleDeleteEvent(event.event_id); }}>
                           删除
@@ -418,10 +419,10 @@ function App() {
               </label>
               <label>
                 GitHub Webhook Secret
-                <input value={webhookConfig?.secret || '(未配置)'} readOnly disabled />
+                <input value={webhookConfig?.secret_configured ? '已在服务器配置' : '未配置'} readOnly disabled />
               </label>
               <p className="settings-hint">
-                在 GitHub 仓库 Settings → Webhooks 中填入以上 URL 和 Secret 以启用自动监听。
+                在 GitHub 仓库 Settings → Webhooks 中填入以上 URL，并使用服务器环境变量中配置的同一 Secret。
               </p>
             </section>
           </div>

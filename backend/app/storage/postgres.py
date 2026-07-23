@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, insert, select, text, update
@@ -26,6 +27,8 @@ from app.storage.database import (
     sync_runs,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class PostgresRepositoryStore:
     """Persist synced repositories in PostgreSQL.
@@ -40,8 +43,9 @@ class PostgresRepositoryStore:
         self._broken = False
         try:
             initialize_database(self.engine)
-        except Exception:
+        except Exception as exc:
             self._broken = True
+            logger.exception("Database initialization failed: %s", exc)
 
     def save(self, snapshot: RepositorySnapshot) -> None:
         with self.engine.begin() as connection:

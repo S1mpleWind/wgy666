@@ -19,7 +19,7 @@ class RepositoryQueryService:
         self,
         owner: str,
         name: str,
-        freshness: FreshnessMode = FreshnessMode.REFRESH_IF_STALE,
+        freshness: FreshnessMode = FreshnessMode.CACHE_FIRST,
     ) -> tuple[RepositorySnapshot, bool]:
         snapshot = repository_store.get(owner, name)
         should_refresh = self._should_refresh(snapshot, freshness)

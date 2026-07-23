@@ -34,7 +34,10 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
     setReplyStatus('posting')
     setReplyError('')
     try {
-      const result = await postWebhookReply(event.event_id)
+      const result = await postWebhookReply(
+        event.event_id,
+        classification?.auto_reply_draft ?? '',
+      )
       setReplyUrl(result.comment_url)
       setReplySource(result.source)
       setReplyStatus('done')
@@ -145,7 +148,7 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
           )}
           {replyStatus === 'posting' && (
             <button className="primary-button" disabled style={{ marginTop: 8 }}>
-              正在生成回复...
+              正在发布回复...
             </button>
           )}
           {replyStatus === 'done' && (
@@ -154,7 +157,7 @@ function IssueDetailModal({ event, onClose }: IssueDetailModalProps) {
               <a href={replyUrl} target="_blank" style={{ marginLeft: 4 }}>查看评论</a>
               {replySource && (
                 <span style={{ marginLeft: 8, fontSize: 11, color: '#6a747e' }}>
-                  （来源: {replySource === 'faq' ? 'FAQ 知识库' : 'LLM Agent'})
+                  （来源: {replySource === 'faq' ? 'FAQ 知识库' : replySource === 'approved_draft' ? '已确认草稿' : 'LLM Agent'})
                 </span>
               )}
             </div>

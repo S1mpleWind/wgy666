@@ -27,7 +27,7 @@ class AssistantChatRequest(BaseModel):
     owner: str = Field(min_length=1)
     name: str = Field(min_length=1)
     message: str = Field(min_length=1)
-    freshness: FreshnessMode = FreshnessMode.REFRESH_IF_STALE
+    freshness: FreshnessMode = FreshnessMode.CACHE_FIRST
     history: list[ChatMessage] = Field(default_factory=list)
 
 

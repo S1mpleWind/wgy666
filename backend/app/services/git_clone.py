@@ -8,6 +8,7 @@ This avoids consuming GitHub API rate limits for file-level operations.
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import shutil
 import tempfile
@@ -34,8 +35,9 @@ class GitCloneService:
             text, truncated = svc.read_file("src/main.py", max_bytes=200000)
     """
 
-    def __init__(self, clone_url: str) -> None:
+    def __init__(self, clone_url: str, token: str | None = None) -> None:
         self._clone_url: str = clone_url
+        self._token = token
         self._workdir: str = ""
         self._depth: int = 1
 
@@ -69,10 +71,17 @@ class GitCloneService:
 
         items: list[dict] = []
         for root, dirs, files in os.walk(self._workdir):
-            dirs[:] = [d for d in dirs if d not in _EXCLUDED_DIRS and not d.startswith(".")]
+            dirs[:] = [
+                d for d in dirs
+                if d not in _EXCLUDED_DIRS
+                and not d.startswith(".")
+                and not os.path.islink(os.path.join(root, d))
+            ]
 
             for name in files:
                 full_path = os.path.join(root, name)
+                if os.path.islink(full_path) or not os.path.isfile(full_path):
+                    continue
                 rel_path = os.path.relpath(full_path, self._workdir).replace("\\", "/")
                 try:
                     size = os.path.getsize(full_path)
@@ -92,7 +101,17 @@ class GitCloneService:
         Returns ``(content, truncated)``.  ``content`` is ``None`` when the
         file cannot be decoded as UTF-8 (binary / asset).
         """
-        full_path = os.path.join(self._workdir, path.replace("/", os.sep))
+        full_path = os.path.realpath(os.path.join(self._workdir, path.replace("/", os.sep)))
+        workdir = os.path.realpath(self._workdir)
+        try:
+            if os.path.commonpath([workdir, full_path]) != workdir:
+                return None, False
+        except ValueError:
+            return None, False
+        if os.path.islink(os.path.join(self._workdir, path.replace("/", os.sep))):
+            return None, False
+        if not os.path.isfile(full_path):
+            return None, False
         try:
             raw = _read_bytes(full_path, max_bytes)
         except OSError:
@@ -120,6 +139,16 @@ class GitCloneService:
             if os.path.exists(self._workdir):
                 import shutil
                 shutil.rmtree(self._workdir, ignore_errors=True)
+            env = os.environ.copy()
+            if self._token:
+                credential = base64.b64encode(
+                    f"x-access-token:{self._token}".encode("utf-8")
+                ).decode("ascii")
+                env.update({
+                    "GIT_CONFIG_COUNT": "1",
+                    "GIT_CONFIG_KEY_0": "http.extraHeader",
+                    "GIT_CONFIG_VALUE_0": f"Authorization: Basic {credential}",
+                })
             process = await asyncio.create_subprocess_exec(
                 "git",
                 "clone",
@@ -129,6 +158,7 @@ class GitCloneService:
                 self._workdir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
             try:
                 stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
@@ -142,7 +172,7 @@ class GitCloneService:
                     delay = 3 * (attempt + 1)
                     await asyncio.sleep(delay)
                     continue
-                raise GitCloneError(f"{last_error} for {self._clone_url}") from None
+                raise GitCloneError(last_error) from None
 
             if process.returncode == 0:
                 return  # success
@@ -152,7 +182,7 @@ class GitCloneService:
 
             # Non-retriable: auth error, repo not found
             if "Authentication failed" in message or "Repository not found" in message or "not found" in message:
-                raise GitCloneError(f"{last_error} for {self._clone_url}")
+                raise GitCloneError(last_error)
 
             if attempt < max_retries:
                 delay = 3 * (attempt + 1)
@@ -160,7 +190,7 @@ class GitCloneService:
                 continue
 
         raise GitCloneError(
-            f"{last_error} for {self._clone_url} (after {max_retries} retries)"
+            f"{last_error} (after {max_retries} retries)"
         )
 
 

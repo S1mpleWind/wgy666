@@ -1,14 +1,17 @@
 import hashlib
 import hmac
+import logging
+from uuid import uuid4
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
 
-from app.schemas.issue import IssueCategory, IssueClassification
+from app.schemas.issue import IssueClassification
 from app.schemas.repository import CategorySummary, GitHubIssue
 from app.services.issue_classifier import IssueClassifier
 from app.storage import repository_store
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -28,6 +31,8 @@ class WebhookEventRecord:
     issue_labels: list[str] = field(default_factory=list)
     issue_author: str | None = None
     classification: IssueClassification | None = None
+    is_read: bool = False
+    is_deleted: bool = False
     received_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     raw_payload: dict = field(default_factory=dict)
 
@@ -39,36 +44,59 @@ webhook_event_store: dict[str, WebhookEventRecord] = {}
 
 def _persist_event(record: WebhookEventRecord) -> None:
     """Write a webhook event to the database when available."""
+    engine = None
     try:
         from app.storage.database import webhook_events
         from app.core.config import settings
-        from sqlalchemy import insert
+        from sqlalchemy import insert, select, update
 
         if not settings.database_url:
             return
 
         from app.storage.database import create_database_engine
         engine = create_database_engine()
+        values = {
+            "event_id": record.event_id,
+            "event_type": record.event_type,
+            "action": record.action,
+            "repository": record.repository,
+            "issue_number": record.issue_number,
+            "issue_title": record.issue_title,
+            "issue_state": record.issue_state,
+            "issue_labels": record.issue_labels,
+            "issue_author": record.issue_author,
+            "classification_json": (
+                record.classification.model_dump(mode="json")
+                if record.classification else None
+            ),
+            "raw_payload": record.raw_payload,
+            "is_read": record.is_read,
+            "is_deleted": record.is_deleted,
+            "received_at": record.received_at,
+        }
         with engine.begin() as conn:
-            stmt = insert(webhook_events).values(
-                event_id=record.event_id,
-                event_type=record.event_type,
-                action=record.action,
-                repository=record.repository,
-                issue_number=record.issue_number,
-                issue_title=record.issue_title,
-                issue_state=record.issue_state,
-                issue_labels=record.issue_labels,
-                issue_author=record.issue_author,
-                classification_json=record.classification.model_dump(mode="json") if record.classification else None,
-                raw_payload=record.raw_payload,
-                is_read=False,
-                is_deleted=False,
-                received_at=record.received_at,
-            )
-            conn.execute(stmt)
-    except Exception:
-        pass  # best-effort persistence
+            existing = conn.execute(
+                select(webhook_events.c.id).where(
+                    webhook_events.c.event_id == record.event_id
+                )
+            ).first()
+            if existing is None:
+                conn.execute(insert(webhook_events).values(**values))
+            else:
+                update_values = {
+                    key: value for key, value in values.items()
+                    if key not in {"event_id", "is_read", "is_deleted"}
+                }
+                conn.execute(
+                    update(webhook_events)
+                    .where(webhook_events.c.event_id == record.event_id)
+                    .values(**update_values)
+                )
+    except Exception as exc:
+        logger.warning("Failed to persist webhook event %s: %s", record.event_id, exc)
+    finally:
+        if engine is not None:
+            engine.dispose()
 
 
 # ---------------------------------------------------------------------------
@@ -160,8 +188,9 @@ async def handle_issue_event(payload: dict, delivery_id: str | None = None) -> W
     )
 
     # Record the event.
+    event_id = delivery_id or f"local-{uuid4().hex}"
     record = WebhookEventRecord(
-        event_id=delivery_id or "",
+        event_id=event_id,
         event_type="issues",
         action=action,
         repository=full_name,
@@ -174,7 +203,7 @@ async def handle_issue_event(payload: dict, delivery_id: str | None = None) -> W
         received_at=datetime.now(timezone.utc),
         raw_payload=payload,
     )
-    webhook_event_store[delivery_id or str(issue_number)] = record
+    webhook_event_store[event_id] = record
 
     # Persist to database (if configured).
     _persist_event(record)

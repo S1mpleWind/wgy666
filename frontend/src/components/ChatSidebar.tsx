@@ -36,10 +36,24 @@ export function ChatSidebar({
   const [isAsking, setIsAsking] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const repositoryName = snapshot?.identity.full_name ?? null
 
   useEffect(() => {
     if (focusRequest > 0) inputRef.current?.focus()
   }, [focusRequest])
+
+  useEffect(() => {
+    setMessages([
+      {
+        role: 'assistant',
+        content: repositoryName
+          ? `已切换到 ${repositoryName}，可以继续提问。`
+          : '同步仓库后，可以问我 Issue、README 或最近活动。',
+      },
+    ])
+    setInput('')
+    setChatError(null)
+  }, [repositoryName])
 
   function selectPrompt(prompt: string) {
     setInput(prompt)
@@ -67,7 +81,7 @@ export function ChatSidebar({
         owner: snapshot.identity.owner,
         name: snapshot.identity.name,
         message: question,
-        freshness: 'refresh_if_stale',
+        freshness: 'cache_first',
         history,
       })
       setMessages((current) => [

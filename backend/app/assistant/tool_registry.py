@@ -167,10 +167,6 @@ class RepositoryToolRegistry:
             self._function("resolve_source_path", "Resolve a RAG source_path to an indexed repository file.", {
                 "source_path": {"type": "string"},
             }, ["source_path"]),
-            self._function("working_tree_diff", "Show current uncommitted Git changes in the application workspace.", {}),
-            self._function("run_tests", "Run pytest in the application workspace and return its output.", {
-                "path": {"type": "string"}, "test_name": {"type": "string"},
-            }),
             self._function("embedding_status", "Report the configured embedding backend and vector dimensions.", {}),
         ]
 
@@ -231,10 +227,6 @@ class RepositoryToolRegistry:
             return self.tools.vector_search(snapshot, arguments["query"], arguments.get("limit", 5), arguments.get("filters"))
         if name == "resolve_source_path":
             return self.tools.resolve_source_path(snapshot, arguments["source_path"])
-        if name == "working_tree_diff":
-            return self.tools.working_tree_diff(snapshot)
-        if name == "run_tests":
-            return self.tools.run_tests(snapshot, arguments.get("path"), arguments.get("test_name"))
         if name == "embedding_status":
             return self.tools.embedding_status(snapshot)
 

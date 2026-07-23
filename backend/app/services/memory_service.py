@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+import logging
 from datetime import datetime, timezone
-from typing import Any
-from collections import Counter
+
+logger = logging.getLogger(__name__)
 
 
 _STOP_WORDS = {
@@ -26,7 +27,7 @@ async def log_fix_memory(
     fix_summary: str,
 ) -> None:
     """Record a fix into long-term memory."""
-    from app.storage.database import fix_memory_logs, create_database_engine
+    from app.storage.database import fix_memory_logs, create_database_engine, find_repository_id
     from app.core.config import settings
     from sqlalchemy import insert
 
@@ -39,9 +40,13 @@ async def log_fix_memory(
     engine = create_database_engine()
     try:
         with engine.begin() as conn:
+            repository_id = find_repository_id(conn, owner, name)
+            if repository_id is None:
+                logger.warning("Cannot record fix memory: repository %s/%s is not synced", owner, name)
+                return
             conn.execute(
                 insert(fix_memory_logs).values(
-                    repository_id=None,  # Will be resolved later
+                    repository_id=repository_id,
                     issue_title=issue_title,
                     issue_category=issue_category,
                     issue_keywords=keywords,
@@ -52,8 +57,8 @@ async def log_fix_memory(
                     created_at=datetime.now(timezone.utc),
                 )
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to record fix memory for %s/%s: %s", owner, name, exc)
     finally:
         engine.dispose()
 
@@ -66,9 +71,9 @@ async def get_similar_fixes(
     limit: int = 3,
 ) -> list[dict]:
     """Retrieve similar past fixes to inject into the LLM prompt."""
-    from app.storage.database import fix_memory_logs, create_database_engine
+    from app.storage.database import fix_memory_logs, create_database_engine, find_repository_id
     from app.core.config import settings
-    from sqlalchemy import select, text
+    from sqlalchemy import select
 
     if not settings.database_url:
         return []
@@ -80,6 +85,9 @@ async def get_similar_fixes(
     engine = create_database_engine()
     try:
         with engine.connect() as conn:
+            repository_id = find_repository_id(conn, owner, name)
+            if repository_id is None:
+                return []
             rows = conn.execute(
                 select(
                     fix_memory_logs.c.issue_title,
@@ -88,7 +96,7 @@ async def get_similar_fixes(
                     fix_memory_logs.c.files_changed,
                     fix_memory_logs.c.fix_summary,
                     fix_memory_logs.c.pattern_type,
-                ),
+                ).where(fix_memory_logs.c.repository_id == repository_id),
             ).mappings().all()
 
         scored = []
@@ -109,6 +117,9 @@ async def get_similar_fixes(
             }
             for _, row in scored[:limit]
         ]
+    except Exception as exc:
+        logger.warning("Failed to read fix memory for %s/%s: %s", owner, name, exc)
+        return []
     finally:
         engine.dispose()
 

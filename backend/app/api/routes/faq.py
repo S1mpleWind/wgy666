@@ -1,7 +1,7 @@
 """FAQ knowledge base management endpoints."""
 
 from datetime import datetime, timezone
-from collections import Counter
+import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -10,6 +10,7 @@ from app.services.embeddings import EmbeddingService
 from app.services.faq_service import _extract_keywords
 
 router = APIRouter(prefix="/faq", tags=["faq"])
+logger = logging.getLogger(__name__)
 
 
 class FaqCreateRequest(BaseModel):
@@ -26,19 +27,24 @@ class FaqAutoGenerateResponse(BaseModel):
 # ── List ───────────────────────────────────────────────────────────────
 
 @router.get("")
-async def list_faq(confirmed: bool | None = None) -> list[dict]:
-    """List all FAQ entries, optionally filtered by confirmed status."""
-    from app.storage.database import faq_entries, create_database_engine
+async def list_faq(owner: str, name: str, confirmed: bool | None = None) -> list[dict]:
+    """List FAQ entries for one repository."""
+    from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import select
 
     engine = create_database_engine()
     try:
         with engine.connect() as conn:
+            repository_id = find_repository_id(conn, owner, name)
+            if repository_id is None:
+                raise HTTPException(status_code=404, detail="Repository not synced")
             query = select(
                 faq_entries.c.id, faq_entries.c.question, faq_entries.c.answer,
                 faq_entries.c.keywords, faq_entries.c.hit_count,
                 faq_entries.c.is_confirmed, faq_entries.c.related_issue_ids,
                 faq_entries.c.created_at,
+            ).where(
+                faq_entries.c.repository_id == repository_id
             ).order_by(faq_entries.c.hit_count.desc())
 
             if confirmed is not None:
@@ -53,9 +59,9 @@ async def list_faq(confirmed: bool | None = None) -> list[dict]:
 # ── Create ─────────────────────────────────────────────────────────────
 
 @router.post("", status_code=201)
-async def create_faq(payload: FaqCreateRequest) -> dict:
+async def create_faq(owner: str, name: str, payload: FaqCreateRequest) -> dict:
     """Add a new FAQ entry manually."""
-    from app.storage.database import faq_entries, create_database_engine
+    from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import insert
 
     keywords = payload.keywords or sorted(_extract_keywords(payload.question))
@@ -64,8 +70,12 @@ async def create_faq(payload: FaqCreateRequest) -> dict:
     engine = create_database_engine()
     try:
         with engine.begin() as conn:
+            repository_id = find_repository_id(conn, owner, name)
+            if repository_id is None:
+                raise HTTPException(status_code=404, detail="Repository not synced")
             result = conn.execute(
                 insert(faq_entries).values(
+                    repository_id=repository_id,
                     question=payload.question,
                     answer=payload.answer,
                     keywords=keywords,
@@ -82,26 +92,36 @@ async def create_faq(payload: FaqCreateRequest) -> dict:
 # ── Update / Confirm ───────────────────────────────────────────────────
 
 @router.patch("/{faq_id}")
-async def update_faq(faq_id: int, action: str) -> dict:
+async def update_faq(faq_id: int, owner: str, name: str, action: str) -> dict:
     """Update a FAQ entry (confirm, unconfirm, or edit)."""
-    from app.storage.database import faq_entries, create_database_engine
+    from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import update
 
     engine = create_database_engine()
     try:
         with engine.begin() as conn:
+            repository_id = find_repository_id(conn, owner, name)
+            if repository_id is None:
+                raise HTTPException(status_code=404, detail="Repository not synced")
+            target = (
+                faq_entries.c.id == faq_id
+            ) & (
+                faq_entries.c.repository_id == repository_id
+            )
             if action == "confirm":
-                conn.execute(
-                    update(faq_entries).where(faq_entries.c.id == faq_id)
+                result = conn.execute(
+                    update(faq_entries).where(target)
                     .values(is_confirmed=True)
                 )
             elif action == "unconfirm":
-                conn.execute(
-                    update(faq_entries).where(faq_entries.c.id == faq_id)
+                result = conn.execute(
+                    update(faq_entries).where(target)
                     .values(is_confirmed=False)
                 )
             else:
                 raise HTTPException(status_code=400, detail="Invalid action")
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="FAQ entry not found")
             return {"status": "ok"}
     finally:
         engine.dispose()
@@ -110,15 +130,25 @@ async def update_faq(faq_id: int, action: str) -> dict:
 # ── Delete ─────────────────────────────────────────────────────────────
 
 @router.delete("/{faq_id}")
-async def delete_faq(faq_id: int) -> dict:
+async def delete_faq(faq_id: int, owner: str, name: str) -> dict:
     """Delete a FAQ entry."""
-    from app.storage.database import faq_entries, create_database_engine
+    from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import delete
 
     engine = create_database_engine()
     try:
         with engine.begin() as conn:
-            conn.execute(delete(faq_entries).where(faq_entries.c.id == faq_id))
+            repository_id = find_repository_id(conn, owner, name)
+            if repository_id is None:
+                raise HTTPException(status_code=404, detail="Repository not synced")
+            result = conn.execute(
+                delete(faq_entries).where(
+                    faq_entries.c.id == faq_id,
+                    faq_entries.c.repository_id == repository_id,
+                )
+            )
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="FAQ entry not found")
             return {"status": "deleted"}
     finally:
         engine.dispose()
@@ -136,6 +166,8 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
     snapshot = repository_store.get(owner, name)
     if not snapshot:
         raise HTTPException(status_code=404, detail="Repository not synced")
+    if not settings.llm_api_key:
+        raise HTTPException(status_code=503, detail="LLM is not configured")
 
     # Group issues by category + keyword similarity.
     groups: dict[str, list[dict]] = {}
@@ -162,12 +194,18 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
         api_key=settings.llm_api_key,
         base_url=settings.llm_api_base_url,
     )
-    from app.storage.database import faq_entries, create_database_engine
+    from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import insert
 
     engine = create_database_engine()
     created = 0
     entries = []
+
+    with engine.connect() as conn:
+        repository_id = find_repository_id(conn, owner, name)
+    if repository_id is None:
+        engine.dispose()
+        raise HTTPException(status_code=404, detail="Repository not synced")
 
     for cluster in candidates:
         issues_text = "\n".join(
@@ -210,6 +248,7 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
             with engine.begin() as conn:
                 result = conn.execute(
                     insert(faq_entries).values(
+                        repository_id=repository_id,
                         question=question,
                         answer=answer,
                         keywords=keywords,
@@ -227,7 +266,8 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
                     "related_issues": [i["number"] for i in cluster[:10]],
                     "is_confirmed": False,
                 })
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to generate FAQ entry for %s/%s: %s", owner, name, exc)
             continue
 
     engine.dispose()

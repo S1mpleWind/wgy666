@@ -14,12 +14,13 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    select,
     text,
 )
 from typing import Any
 
 from sqlalchemy.types import UserDefinedType
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 
 from app.core.config import settings
 
@@ -254,6 +255,17 @@ def create_database_engine() -> Engine:
     elif settings.database_url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
     return create_engine(settings.database_url, **kwargs)
+
+
+def find_repository_id(connection: Connection, owner: str, name: str) -> int | None:
+    """Return the normalized repository id for an owner/name pair."""
+    row = connection.execute(
+        select(repositories.c.id).where(
+            repositories.c.owner == owner,
+            repositories.c.name == name,
+        )
+    ).first()
+    return int(row.id) if row is not None else None
 
 
 def initialize_database(engine: Engine) -> None:

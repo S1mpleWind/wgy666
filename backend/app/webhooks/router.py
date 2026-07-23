@@ -1,11 +1,22 @@
-import asyncio
+import logging
 from fastapi import APIRouter, Header, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.schemas.issue import IssueClassification
-from app.webhooks.handler import dispatch_event, verify_signature, webhook_event_store
+from app.webhooks.handler import (
+    WebhookEventRecord,
+    dispatch_event,
+    verify_signature,
+    webhook_event_store,
+)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+logger = logging.getLogger(__name__)
+
+
+class ApprovedReplyRequest(BaseModel):
+    reply_text: str = Field(min_length=1, max_length=10000)
 
 
 @router.post("/github")
@@ -30,11 +41,9 @@ async def github_webhook(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON body") from exc
 
-    record = await dispatch_event(x_github_event, payload, delivery_id=x_github_delivery)
+    await dispatch_event(x_github_event, payload, delivery_id=x_github_delivery)
 
-    # NOTE: Auto-reply is not posted automatically — see /events/{id}/reply
-    # TODO: For production, dispatch asynchronously via asyncio.create_task or
-    # a task queue to avoid GitHub's 10s webhook timeout.
+    # Auto-reply is not posted automatically; maintainers approve it first.
 
     return {"status": "ok"}
 
@@ -43,54 +52,44 @@ async def github_webhook(
 async def webhook_config(request: Request) -> dict:
     """Return the webhook configuration for the frontend settings panel.
 
-    Exposes the public URL and the configured secret so users can copy
-    them into GitHub's Webhook settings page.
+    The secret value is never returned to clients.
     """
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     host = request.headers.get("host", request.url.netloc)
     webhook_url = f"{scheme}://{host}/api/webhooks/github"
     return {
         "url": webhook_url,
-        "secret": settings.github_webhook_secret or "",
+        "secret_configured": bool(settings.github_webhook_secret),
     }
 
 
 @router.get("/events")
-async def list_webhook_events(limit: int = 20) -> list[dict]:
-    """Return recent webhook events from the in-memory store.
-
-    Events are sorted newest-first. This endpoint is for the frontend
-    notification inbox.
-
-    TODO: Replace with database-backed query when webhook events are persisted.
-    """
+async def list_webhook_events(
+    limit: int = 20,
+    repository: str | None = None,
+) -> list[dict]:
+    """Return recent non-deleted webhook events, optionally by repository."""
+    limit = max(1, min(limit, 100))
+    events_by_id = {
+        event.event_id: event
+        for event in _load_database_events(repository, limit)
+    }
+    for event in webhook_event_store.values():
+        if event.is_deleted:
+            continue
+        if repository and event.repository != repository:
+            continue
+        events_by_id[event.event_id] = event
     events = sorted(
-        webhook_event_store.values(),
-        key=lambda e: e.received_at,
-        reverse=True,
-    )
-    return [
-        {
-            "event_id": e.event_id,
-            "event_type": e.event_type,
-            "action": e.action,
-            "repository": e.repository,
-            "issue_number": e.issue_number,
-            "issue_title": e.issue_title,
-            "issue_state": e.issue_state,
-            "issue_author": e.issue_author,
-            "issue_labels": e.issue_labels,
-            "classification": _classification_dict(e.classification),
-            "received_at": e.received_at.isoformat(),
-        }
-        for e in events[:limit]
-    ]
+        events_by_id.values(), key=lambda event: event.received_at, reverse=True,
+    )[:limit]
+    return [_event_summary(event) for event in events]
 
 
 @router.get("/events/{event_id}")
 async def get_webhook_event(event_id: str) -> dict:
     """Return full detail for a single webhook event."""
-    record = webhook_event_store.get(event_id)
+    record = _find_event(event_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -111,6 +110,7 @@ async def get_webhook_event(event_id: str) -> dict:
         "issue_comments_count": issue_data.get("comments", 0),
         "issue_html_url": issue_data.get("html_url"),
         "classification": _classification_dict(record.classification),
+        "is_read": record.is_read,
         "received_at": record.received_at.isoformat(),
     }
 
@@ -123,14 +123,14 @@ async def update_webhook_event(event_id: str, action: str) -> dict:
       action=read   — mark as read
       action=delete — mark as deleted (hidden from list)
     """
-    record = webhook_event_store.get(event_id)
+    record = _find_event(event_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
     if action == "read":
-        pass  # memory store doesn't have a read flag; frontend handles locally
+        record.is_read = True
     elif action == "delete":
-        webhook_event_store.pop(event_id, None)
+        record.is_deleted = True
     else:
         raise HTTPException(status_code=400, detail="Invalid action. Use 'read' or 'delete'.")
 
@@ -152,21 +152,20 @@ async def update_webhook_event(event_id: str, action: str) -> dict:
                         update(webhook_events).where(webhook_events.c.event_id == event_id)
                         .values(is_read=True)
                     )
-    except Exception:
-        pass
+            engine.dispose()
+    except Exception as exc:
+        logger.warning("Failed to update webhook event %s: %s", event_id, exc)
 
     return {"status": "ok"}
 
 
 @router.post("/events/{event_id}/reply")
-async def reply_to_webhook_event(event_id: str) -> dict:
-    """Generate and post an auto-reply for a webhook event using AgentHarness.
-
-    The LLM uses the full tool-calling pipeline (searches files, README,
-    knowledge graph) to research the issue before writing a reply.
-    The reply is posted as a GitHub comment on the original issue.
-    """
-    record = webhook_event_store.get(event_id)
+async def reply_to_webhook_event(
+    event_id: str,
+    payload: ApprovedReplyRequest | None = None,
+) -> dict:
+    """Post an approved draft, or generate a reply for legacy callers."""
+    record = _find_event(event_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Event not found")
     if not record.classification:
@@ -177,6 +176,19 @@ async def reply_to_webhook_event(event_id: str) -> dict:
     from app.assistant.harness import AgentHarness
     from app.services.github_client import GitHubClient
     from app.services.repository_url import parse_github_repository_url
+
+    if payload is not None:
+        reply_text = payload.reply_text.strip()
+        ref = parse_github_repository_url(f"https://github.com/{record.repository}")
+        async with GitHubClient() as gh:
+            comment = await gh.comment_on_issue(ref, record.issue_number, reply_text)
+        return {
+            "status": "ok",
+            "reply_text": reply_text,
+            "comment_url": comment.get("html_url", ""),
+            "event_id": event_id,
+            "source": "approved_draft",
+        }
 
     harness = AgentHarness()
     snapshot, _ = await harness.query.get_snapshot(owner, name, "cache_first")
@@ -246,7 +258,7 @@ async def reply_to_webhook_event(event_id: str) -> dict:
 @router.post("/events/{event_id}/fix")
 async def fix_webhook_event(event_id: str) -> dict:
     """Generate and submit an auto-fix PR for a bug issue using AgentHarness."""
-    record = webhook_event_store.get(event_id)
+    record = _find_event(event_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Event not found")
     if not record.classification:
@@ -273,9 +285,9 @@ async def fix_webhook_event(event_id: str) -> dict:
         owner=owner, name=name,
         issue_title=record.issue_title,
         issue_category=record.classification.category.value,
-        issue_body=body_str,
-        files_changed=[],
-        fix_summary=f"Auto-fix for: {record.issue_title}",
+        issue_body=record.raw_payload.get("issue", {}).get("body"),
+        files_changed=result.files_changed,
+        fix_summary=result.summary or f"Auto-fix for: {record.issue_title}",
     )
 
     return {
@@ -283,6 +295,107 @@ async def fix_webhook_event(event_id: str) -> dict:
         "pr_url": result.pr_url,
         "branch_name": result.branch_name,
         "event_id": event_id,
+    }
+
+
+def _load_database_events(
+    repository: str | None,
+    limit: int,
+) -> list[WebhookEventRecord]:
+    """Read persisted events; failures fall back to the in-memory store."""
+    if not settings.database_url:
+        return []
+
+    from app.storage.database import create_database_engine, webhook_events
+    from sqlalchemy import select
+
+    engine = create_database_engine()
+    try:
+        statement = (
+            select(webhook_events)
+            .where(webhook_events.c.is_deleted.is_(False))
+            .order_by(webhook_events.c.received_at.desc())
+        )
+        if repository:
+            statement = statement.where(webhook_events.c.repository == repository)
+        statement = statement.limit(limit)
+        with engine.connect() as conn:
+            rows = conn.execute(statement).mappings().all()
+        return [_database_row_to_record(row) for row in rows]
+    except Exception as exc:
+        logger.warning("Failed to load webhook events: %s", exc)
+        return []
+    finally:
+        engine.dispose()
+
+
+def _find_event(event_id: str) -> WebhookEventRecord | None:
+    record = webhook_event_store.get(event_id)
+    if record is not None and not record.is_deleted:
+        return record
+    if not settings.database_url:
+        return None
+
+    from app.storage.database import create_database_engine, webhook_events
+    from sqlalchemy import select
+
+    engine = create_database_engine()
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                select(webhook_events).where(
+                    webhook_events.c.event_id == event_id,
+                    webhook_events.c.is_deleted.is_(False),
+                )
+            ).mappings().first()
+        if row is None:
+            return None
+        record = _database_row_to_record(row)
+        webhook_event_store[event_id] = record
+        return record
+    except Exception as exc:
+        logger.warning("Failed to load webhook event %s: %s", event_id, exc)
+        return None
+    finally:
+        engine.dispose()
+
+
+def _database_row_to_record(row) -> WebhookEventRecord:
+    classification = None
+    if row.get("classification_json"):
+        classification = IssueClassification.model_validate(row["classification_json"])
+    return WebhookEventRecord(
+        event_id=row["event_id"],
+        event_type=row["event_type"],
+        action=row["action"],
+        repository=row["repository"],
+        issue_number=row["issue_number"],
+        issue_title=row["issue_title"],
+        issue_state=row["issue_state"],
+        issue_labels=row["issue_labels"] or [],
+        issue_author=row["issue_author"],
+        classification=classification,
+        is_read=bool(row["is_read"]),
+        is_deleted=bool(row["is_deleted"]),
+        received_at=row["received_at"],
+        raw_payload=row["raw_payload"] or {},
+    )
+
+
+def _event_summary(event: WebhookEventRecord) -> dict:
+    return {
+        "event_id": event.event_id,
+        "event_type": event.event_type,
+        "action": event.action,
+        "repository": event.repository,
+        "issue_number": event.issue_number,
+        "issue_title": event.issue_title,
+        "issue_state": event.issue_state,
+        "issue_author": event.issue_author,
+        "issue_labels": event.issue_labels,
+        "classification": _classification_dict(event.classification),
+        "is_read": event.is_read,
+        "received_at": event.received_at.isoformat(),
     }
 
 

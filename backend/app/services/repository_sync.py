@@ -7,14 +7,14 @@ File tree and source content are obtained via a shallow ``git clone``
 instead of the GitHub tree/content API to avoid rate-limit exhaustion.
 """
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
 
-from app.schemas.issue import GitHubIssue, IssueCategory
+from app.schemas.issue import GitHubIssue
 from app.schemas.repository import (
-    ClassifiedFile,
     CommitSummary,
     FileCategory,
     PullRequestSummary,
@@ -37,6 +37,7 @@ class RepositorySyncService:
     def __init__(self) -> None:
         self.file_classifier = FileClassifier()
         self.issue_classifier = IssueClassifier()
+        self._issue_llm_limit = asyncio.Semaphore(4)
 
     async def sync(self, request: SyncRepositoryRequest) -> RepositorySnapshot:
         """Execute a full repository sync and return the resulting snapshot.
@@ -49,38 +50,41 @@ class RepositorySyncService:
         5. Assemble and return the snapshot.
         """
         ref = parse_github_repository_url(request.url)
-        if settings.github_token:
-            # Authenticated clone — avoids GitHub rate limits for git operations.
-            clone_url = f"https://x-access-token:{settings.github_token}@github.com/{ref.owner}/{ref.name}.git"
-        else:
-            clone_url = f"https://github.com/{ref.owner}/{ref.name}.git"
+        clone_url = f"https://github.com/{ref.owner}/{ref.name}.git"
 
         async with GitHubClient() as client:
-            repository = await client.get_repository(ref)
-            languages = await client.get_languages(ref)
-            readme = await client.get_readme(ref)
+            repository, languages, readme, issues, pulls, commits = await asyncio.gather(
+                client.get_repository(ref),
+                client.get_languages(ref),
+                client.get_readme(ref),
+                client.get_issues(ref, request.max_issues),
+                client.get_pull_requests(ref, request.max_pull_requests),
+                client.get_commits(ref, request.max_commits),
+            )
             branch = repository.get("default_branch") or "main"
-            issues = await client.get_issues(ref, request.max_issues)
-            pulls = await client.get_pull_requests(ref, request.max_pull_requests)
-            commits = await client.get_commits(ref, request.max_commits)
 
         # -- File classification + source content from git clone --------------
-        async with GitCloneService(clone_url) as git_clone:
+        async with GitCloneService(clone_url, token=settings.github_token) as git_clone:
             # Channel A: random sample for accurate category statistics
-            tree = git_clone.walk_files(limit=request.max_tree_items)
+            tree = await asyncio.to_thread(
+                git_clone.walk_files, request.max_tree_items,
+            )
             files, file_categories = self.file_classifier.classify_many(
                 tree, request.max_tree_items
             )
 
             # Channel B: full scan of all indexable files for RAG vectorization
-            source_contents = self._clone_all_indexable_files(
+            source_contents = await asyncio.to_thread(
+                self._clone_all_indexable_files,
                 git_clone,
                 self.file_classifier,
-                max_files=settings.rag_max_source_files,
-                max_bytes=settings.rag_max_source_file_bytes,
+                settings.rag_max_source_files,
+                settings.rag_max_source_file_bytes,
             )
 
-        classified_issues = [await self._map_issue(issue) for issue in issues]
+        classified_issues = list(await asyncio.gather(
+            *(self._map_issue(issue) for issue in issues)
+        ))
         issue_categories = self.issue_classifier.summarize(
             [issue.classification.category for issue in classified_issues]
         )
@@ -194,11 +198,12 @@ class RepositorySyncService:
     async def _map_issue(self, payload: dict[str, Any]) -> GitHubIssue:
         """Map a GitHub API issue object to our ``GitHubIssue`` model."""
         labels = [label["name"] for label in payload.get("labels", []) if "name" in label]
-        classification = await self.issue_classifier.async_classify(
-            title=payload.get("title") or "",
-            body=payload.get("body"),
-            labels=labels,
-        )
+        async with self._issue_llm_limit:
+            classification = await self.issue_classifier.async_classify(
+                title=payload.get("title") or "",
+                body=payload.get("body"),
+                labels=labels,
+            )
         return GitHubIssue(
             number=payload["number"],
             title=payload.get("title") or "",

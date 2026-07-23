@@ -52,7 +52,6 @@ class TestGitHubClientInternals:
     def test_comment_on_issue_builds_correct_path(self):
         """Verify the method constructs the expected API path internally via _post."""
         client = GitHubClient()
-        ref = RepositoryRef(owner="test-owner", name="test-repo")
         # _post is mocked by not being called — we just verify the
         # method exists and expects the right argument types.
         import inspect
@@ -103,7 +102,7 @@ class TestGitHubClientInternals:
 
         client._put = fake_put  # type: ignore[method-assign]
 
-        result = asyncio.run(
+        asyncio.run(
             client.create_or_update_file(
                 ref=ref,
                 path="src/main.py",
@@ -155,3 +154,49 @@ class TestGitHubClientInternals:
 
         assert captured_data["message"] == "Create new.txt"
         assert "sha" not in captured_data
+
+    def test_get_issues_paginates_past_pull_requests(self):
+        """PR entries do not reduce the requested number of real issues."""
+        import asyncio
+
+        client = GitHubClient()
+        ref = RepositoryRef(owner="o", name="r")
+        calls = []
+
+        async def fake_get(path, params=None):
+            calls.append(params)
+            if params["page"] == 1:
+                return [
+                    *({"number": number, "pull_request": {}} for number in range(29)),
+                    {"number": 100},
+                ]
+            return [{"number": 101}]
+
+        client._get = fake_get  # type: ignore[method-assign]
+        issues = asyncio.run(client.get_issues(ref, 2))
+        assert [issue["number"] for issue in issues] == [100, 101]
+        assert len(calls) == 2
+
+    def test_file_content_limit_is_measured_in_bytes(self):
+        import asyncio
+        import base64
+
+        client = GitHubClient()
+        ref = RepositoryRef(owner="o", name="r")
+
+        async def fake_get(path, params=None):
+            raw = "你好".encode("utf-8")
+            return {
+                "type": "file",
+                "encoding": "base64",
+                "content": base64.b64encode(raw).decode("ascii"),
+                "size": len(raw),
+            }
+
+        client._get = fake_get  # type: ignore[method-assign]
+        content, truncated = asyncio.run(
+            client.get_file_content(ref, "README.md", "main", max_bytes=4)
+        )
+        assert content == "你"
+        assert len(content.encode("utf-8")) <= 4
+        assert truncated is True
