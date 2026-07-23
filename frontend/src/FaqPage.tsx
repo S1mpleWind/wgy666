@@ -22,6 +22,9 @@ export default function FaqPage({ owner, name }: { owner: string; name: string }
   const [newQuestion, setNewQuestion] = useState('')
   const [newAnswer, setNewAnswer] = useState('')
   const [faqError, setFaqError] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editQuestion, setEditQuestion] = useState('')
+  const [editAnswer, setEditAnswer] = useState('')
 
   const loadFaq = useCallback(async () => {
     setLoading(true)
@@ -47,6 +50,23 @@ export default function FaqPage({ owner, name }: { owner: string; name: string }
       setFaqError(await responseError(response, 'FAQ 更新失败'))
       return
     }
+    await loadFaq()
+  }
+
+  async function handleEdit(id: number, question: string, answer: string) {
+    const params = new URLSearchParams({ owner, name, action: 'edit' })
+    const response = await fetch(`${API_BASE_URL}/api/faq/${id}?${params}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, answer }),
+    })
+    if (!response.ok) {
+      setFaqError(await responseError(response, 'FAQ 编辑失败'))
+      return
+    }
+    setEditingId(null)
+    setEditQuestion('')
+    setEditAnswer('')
     await loadFaq()
   }
 
@@ -136,15 +156,29 @@ export default function FaqPage({ owner, name }: { owner: string; name: string }
                 <div className="faq-item-meta">
                   {!entry.is_confirmed && <span className="badge" style={{ background: '#fff4d6', color: '#946200' }}>待确认</span>}
                   <span style={{ fontSize: 11, color: '#6a747e' }}>命中 {entry.hit_count} 次</span>
-                  <button className="ghost-button" style={{ minHeight: 28, padding: '0 8px', fontSize: 12 }} onClick={() => handleConfirm(entry.id, !entry.is_confirmed)}>
+                  <button className="ghost-button" style={{ minHeight: 28, padding: '0 4px', fontSize: 11 }} onClick={() => handleConfirm(entry.id, !entry.is_confirmed)}>
                     {entry.is_confirmed ? '取消确认' : '确认'}
                   </button>
-                  <button className="ghost-button" style={{ minHeight: 28, padding: '0 8px', fontSize: 12 }} onClick={() => handleDelete(entry.id)}>
+                  <button className="ghost-button" style={{ minHeight: 28, padding: '0 4px', fontSize: 11 }} onClick={() => { setEditingId(entry.id); setEditQuestion(entry.question); setEditAnswer(entry.answer); }}>
+                    编辑
+                  </button>
+                  <button className="ghost-button" style={{ minHeight: 28, padding: '0 4px', fontSize: 11 }} onClick={() => handleDelete(entry.id)}>
                     删除
                   </button>
                 </div>
               </div>
-              <p className="faq-answer">{entry.answer}</p>
+              {editingId === entry.id ? (
+                <div className="faq-add-form" style={{ marginTop: 8 }}>
+                  <input value={editQuestion} onChange={e => setEditQuestion(e.target.value)} placeholder="问题" />
+                  <textarea value={editAnswer} onChange={e => setEditAnswer(e.target.value)} placeholder="回答" rows={3} />
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="primary-button" onClick={() => handleEdit(entry.id, editQuestion, editAnswer)}>保存</button>
+                    <button className="ghost-button" onClick={() => setEditingId(null)}>取消</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="faq-answer">{entry.answer}</p>
+              )}
               {entry.related_issue_ids && entry.related_issue_ids.length > 0 && (
                 <div className="faq-related">
                   关联 Issue: {entry.related_issue_ids.map(id => `#${id}`).join(', ')}

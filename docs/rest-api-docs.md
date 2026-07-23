@@ -216,6 +216,21 @@
 
 确认/取消确认 FAQ 条目。
 
+#### `PATCH /api/faq/{id}?action=edit`
+
+编辑 FAQ 条目（可更新 question 和/或 answer）。
+
+**请求体**（JSON，可选字段，传哪个更新哪个）:
+
+```json
+{
+  "question": "新的问题",
+  "answer": "新的回答"
+}
+```
+
+更新 question 时会自动重新提取 keywords 和 embedding。
+
 #### `DELETE /api/faq/{id}`
 
 删除 FAQ 条目。

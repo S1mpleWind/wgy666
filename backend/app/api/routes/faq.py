@@ -19,6 +19,12 @@ class FaqCreateRequest(BaseModel):
     keywords: list[str] = Field(default_factory=list)
 
 
+class FaqUpdateRequest(BaseModel):
+    question: str | None = None
+    answer: str | None = None
+    keywords: list[str] | None = None
+
+
 class FaqAutoGenerateResponse(BaseModel):
     created: int
     entries: list[dict]
@@ -93,7 +99,7 @@ async def create_faq(owner: str, name: str, payload: FaqCreateRequest) -> dict:
 # ── Update / Confirm ───────────────────────────────────────────────────
 
 @router.patch("/{faq_id}")
-async def update_faq(faq_id: int, owner: str, name: str, action: str) -> dict:
+async def update_faq(faq_id: int, owner: str, name: str, action: str, body: FaqUpdateRequest | None = None) -> dict:
     """Update a FAQ entry (confirm, unconfirm, or edit)."""
     from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import update
