@@ -1,281 +1,249 @@
-# GitHub REST API 接口文档
+# IssueScope API 接口文档
 
-> IssueScope 系统使用的 GitHub REST API 端点汇总。
-> 所有请求均通过 `backend/app/services/github_client.py` 封装。
+> 系统涉及的所有 API 端点：外部 GitHub REST API + 内部 IssueScope API。
 
 ---
 
-## 通用说明
+## 第一部分：GitHub REST API（外部）
+
+所有请求通过 `backend/app/services/github_client.py` 封装。
+
+### 通用说明
 
 - **Base URL**: `https://api.github.com`
 - **认证**: `Authorization: Bearer <GITHUB_TOKEN>`
 - **版本头**: `X-GitHub-Api-Version: 2022-11-28`
 - **限速**: 有 token 5000 次/小时，无 token 60 次/小时
 
----
+### 读取接口
 
-## 读取接口
+| 方法 | 路径 | 说明 | 源码 |
+|------|------|------|------|
+| GET | `/repos/{owner}/{name}` | 仓库元数据 | `get_repository()` |
+| GET | `/repos/{owner}/{name}/languages` | 语言分布 | `get_languages()` |
+| GET | `/repos/{owner}/{name}/readme` | README（base64 解码） | `get_readme()` |
+| GET | `/repos/{owner}/{name}/git/trees/{branch}?recursive=1` | 文件树 | `get_tree()` |
+| GET | `/repos/{owner}/{name}/contents/{path}?ref={branch}` | 文件内容 | `get_file_content()` |
+| GET | `/repos/{owner}/{name}/issues?state=all` | Issue 列表 | `get_issues()` |
+| GET | `/repos/{owner}/{name}/pulls?state=all` | PR 列表 | `get_pull_requests()` |
+| GET | `/repos/{owner}/{name}/commits` | Commit 列表 | `get_commits()` |
 
-### 获取仓库元数据
+### 写入接口
 
-```
-GET /repos/{owner}/{name}
-```
-
-**响应**: 仓库信息（owner、stats、topics 等）
-
-**源码**: `GitHubClient.get_repository()`
-
----
-
-### 获取仓库语言分布
-
-```
-GET /repos/{owner}/{name}/languages
-```
-
-**响应**: `{"Python": 5842000, "TypeScript": 892000, ...}`
-
-**源码**: `GitHubClient.get_languages()`
+| 方法 | 路径 | 说明 | 权限 | 源码 |
+|------|------|------|------|------|
+| POST | `/repos/{o}/{n}/issues/{num}/comments` | 评论 Issue | `issues:write` | `comment_on_issue()` |
+| PATCH | `/repos/{o}/{n}/issues/{num}` | 更新 Issue（状态、标签） | `issues:write` | `update_issue()` |
+| POST | `/repos/{o}/{n}/pulls` | 创建 PR | `pull_requests:write` | `create_pull_request()` |
+| POST | `/repos/{o}/{n}/git/refs` | 创建分支 | `contents:write` | `create_branch()` |
+| PUT | `/repos/{o}/{n}/contents/{path}` | 创建/修改文件 | `contents:write` | `create_or_update_file()` |
 
 ---
 
-### 获取 README
+## 第二部分：IssueScope API（内部）
 
-```
-GET /repos/{owner}/{name}/readme
-```
+所有端点通过 FastAPI 提供，Base URL 由 `VITE_API_BASE_URL` 配置。
 
-**响应**: 返回 JSON，其中 `content` 为 base64 编码的 README 文本
+### 系统
 
-**处理**: `GitHubClient.get_readme()` 自动解码 base64，截断至 12KB
+#### `GET /api/health`
 
----
+系统健康检查。
 
-### 获取 Git Tree（文件树）
-
-```
-GET /repos/{owner}/{name}/git/trees/{branch}?recursive=1
-```
-
-**响应**: 仓库完整目录树（递归），含所有文件路径和类型
-
-**源码**: `GitHubClient.get_tree()`
+**响应**: `{"status": "ok"}`
 
 ---
 
-### 获取文件内容
+### 仓库同步
 
-```
-GET /repos/{owner}/{name}/contents/{path}?ref={branch}
-```
+#### `POST /api/repositories/sync`
 
-**响应**: 文件的 base64 编码内容
-
-**处理**: `GitHubClient.get_file_content()` 自动解码，按 `rag_max_source_file_bytes` 截断
-
----
-
-### 获取 Issues
-
-```
-GET /repos/{owner}/{name}/issues?state=all&sort=updated&direction=desc&per_page={limit}
-```
-
-**注意**: GitHub 的 `/issues` 端点同时返回 PR，需过滤 `pull_request` 字段
-
-**源码**: `GitHubClient.get_issues()`
-
----
-
-### 获取 Pull Requests
-
-```
-GET /repos/{owner}/{name}/pulls?state=all&sort=updated&direction=desc&per_page={limit}
-```
-
-**源码**: `GitHubClient.get_pull_requests()`
-
----
-
-### 获取 Commits
-
-```
-GET /repos/{owner}/{name}/commits?per_page={limit}
-```
-
-**源码**: `GitHubClient.get_commits()`
-
----
-
-## 写入接口
-
-### 评论 Issue
-
-```
-POST /repos/{owner}/{name}/issues/{issue_number}/comments
-```
+同步 GitHub 仓库数据（拉取元数据、git clone、分类、构建知识图谱）。
 
 **请求体**:
 
 ```json
 {
-  "body": "感谢反馈！这是一个 question 类型的问题..."
+  "url": "https://github.com/S1mpleWind/wgy666",
+  "max_issues": 30,
+  "max_pull_requests": 15,
+  "max_commits": 12,
+  "max_tree_items": 600
 }
 ```
 
-**权限**: `issues:write`
+**响应**: `RepositorySnapshot`（含 identity、stats、files、issues、knowledge graph 等）
 
-**源码**: `GitHubClient.comment_on_issue()`
+#### `GET /api/repositories`
 
----
+列出已同步的仓库列表。
 
-### 更新 Issue
+**响应**: `RepositoryListItem[]`
 
-```
-PATCH /repos/{owner}/{name}/issues/{issue_number}
-```
+#### `GET /api/repositories/{owner}/{name}`
 
-**请求体**（可选字段，按需传入）:
+获取已同步仓库的快照（读缓存，不会重新拉取）。
 
-```json
-{
-  "state": "closed",
-  "labels": ["bug", "triaged"],
-  "title": "新标题"
-}
-```
-
-**权限**: `issues:write`
-
-**源码**: `GitHubClient.update_issue()`
+**响应**: `RepositorySnapshot`
 
 ---
 
-### 创建 Pull Request
+### Assistant / Agent
 
-```
-POST /repos/{owner}/{name}/pulls
-```
+#### `POST /api/assistant/chat`
+
+向仓库助手提问。
 
 **请求体**:
 
 ```json
 {
-  "title": "修复 Issue #42：登录崩溃问题",
-  "head": "fix-bug-login-crash",
-  "base": "main",
-  "body": "## 修复内容\n\n关闭 #42\n\n- 修复了空指针异常\n- 增加了空值检查"
+  "owner": "S1mpleWind",
+  "name": "wgy666",
+  "message": "这个项目的测试在哪？",
+  "freshness": "cache_first",
+  "history": []
 }
 ```
 
-| 字段 | 必填 | 说明 |
+**响应**:
+
+```json
+{
+  "answer": "测试文件在 tests/ 目录下...",
+  "repository": "S1mpleWind/wgy666",
+  "used_cached_data": true,
+  "tool_calls": [...],
+  "citations": [...]
+}
+```
+
+---
+
+### Webhook
+
+#### `POST /api/webhooks/github`
+
+接收 GitHub Webhook 事件（需在 GitHub 仓库配置）。
+
+**Headers**:
+- `X-GitHub-Event`: 事件类型（`issues`、`pull_request` 等）
+- `X-Hub-Signature-256`: HMAC-SHA256 签名
+- `X-GitHub-Delivery`: 事件唯一 ID
+
+**处理的事件**:
+
+| 事件 | 动作 | 行为 |
 |------|------|------|
-| `title` | 是 | PR 标题 |
-| `head` | 是 | 修复分支名 |
-| `base` | 是 | 目标分支（通常是 main） |
-| `body` | 否 | PR 描述，支持 Markdown |
+| `issues` | `opened` | LLM 分类 + 通知 + 自动回复草稿 |
+| `issues` | `reopened` | LLM 分类 + 通知（同 opened） |
+| `issues` | `closed` | 更新快照 + 通知（前端自动刷新） |
+| `issues` | `edited` / `labeled` | 忽略 |
 
-**权限**: `pull_requests:write`
+**响应**: `{"status": "ok"}`
 
-**源码**: `GitHubClient.create_pull_request()`
+#### `GET /api/webhooks/events`
 
-**测试验证**:
+获取 Webhook 事件列表（前端通知轮询）。
 
+**参数**: `limit=20`, `repository=owner/name`
+
+#### `GET /api/webhooks/events/{event_id}`
+
+获取单个事件详情（含 classification、auto_reply_draft）。
+
+#### `PATCH /api/webhooks/events/{event_id}?action={read|delete}`
+
+标记事件为已读或删除。
+
+#### `POST /api/webhooks/events/{event_id}/reply`
+
+确认回复——AgentHarness 生成回复并 post 到 GitHub。
+
+**响应**:
+
+```json
+{
+  "status": "ok",
+  "reply_text": "回复内容...",
+  "comment_url": "https://github.com/...",
+  "source": "faq|llm"
+}
 ```
-替换 _post 为 fake 函数，验证:
-  路径 → /repos/owner/repo/pulls
-  body → { title, head, base, body }
+
+#### `POST /api/webhooks/events/{event_id}/fix`
+
+确认修复——AgentHarness 分析代码 → 建分支 → 改文件 → 提 PR。
+
+**响应**:
+
+```json
+{
+  "status": "ok",
+  "pr_url": "https://github.com/.../pull/1",
+  "branch_name": "auto-fix/issue-42"
+}
 ```
+
+#### `GET /api/webhooks/config`
+
+获取 Webhook 配置（URL + 是否已配置 secret）。
 
 ---
 
-### 创建分支
+### FAQ 知识库
 
-```
-POST /repos/{owner}/{name}/git/refs
-```
+#### `GET /api/faq`
+
+列出所有 FAQ 条目。
+
+**参数**: `?confirmed=true|false`
+
+#### `POST /api/faq`
+
+手动添加 FAQ。
 
 **请求体**:
 
 ```json
 {
-  "ref": "refs/heads/fix-bug-login-crash",
-  "sha": "abc123def456..."
+  "question": "怎么部署后端",
+  "answer": "执行 cd backend && uv run uvicorn..."
 }
 ```
 
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `ref` | 是 | 完整引用路径 `refs/heads/{branch_name}` |
-| `sha` | 是 | 基于哪个 commit 创建分支 |
+#### `PATCH /api/faq/{id}?action={confirm|unconfirm}`
 
-**权限**: `contents:write`
+确认/取消确认 FAQ 条目。
 
-**源码**: `GitHubClient.create_branch()`
+#### `DELETE /api/faq/{id}`
 
----
+删除 FAQ 条目。
 
-### 创建/更新文件
+#### `POST /api/faq/generate?owner={owner}&name={name}`
 
-```
-PUT /repos/{owner}/{name}/contents/{path}
-```
+自动生成 FAQ——分析已关闭 Issue 聚类 → LLM 总结 → 写入（待确认）。
 
-**请求体**:
+**响应**:
 
 ```json
 {
-  "message": "修复 Issue #42：添加空值检查",
-  "content": "aW1wb3J0IG9zCgpkZWYgcmVhZF9jb25maWcoKToKICAgIA==",
-  "branch": "fix-bug-login-crash",
-  "sha": "abc123def456..."
+  "created": 0,
+  "entries": [],
+  "reason": "仓库暂无已关闭 Issue，无法自动生成 FAQ"
 }
-```
-
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| `message` | 是 | commit 信息 |
-| `content` | 是 | 文件内容，**base64 编码** |
-| `branch` | 是 | 目标分支 |
-| `sha` | 更新时必填 | 文件当前 SHA（新建文件时省略） |
-
-**获取已有文件的 SHA**: 先调 `GET /repos/{owner}/{name}/contents/{path}`，响应中的 `sha` 字段
-
-**权限**: `contents:write`
-
-**源码**: `GitHubClient.create_or_update_file()`
-
-**测试验证**（mock `_put`）:
-
-```python
-async def fake_put(path, json_data=None):
-    assert "owner/repo/contents/src/main.py" in path
-    assert json_data["message"] == "Add main.py"
-    assert base64.b64decode(json_data["content"]).decode() == "print('hello')"
-    assert json_data["branch"] == "fix-bug"
-    # 新建文件时不传 sha
-    assert "sha" not in json_data
 ```
 
 ---
 
-## 自动修复 PR 完整流程
-
-以下按顺序调用可完成"收到 bug Issue → 自动修复 → 提 PR"：
+### 自动修复 PR 完整流程
 
 ```
-1. KnowledgeGraphService.search()        # RAG 搜索定位相关源码
-2. LLM: 分析 bug + 生成修复后的代码
-3. create_branch(ref, "fix-issue-42", sha)  # 从 main 创建修复分支
-4. create_or_update_file(ref, path, ...)    # 提交修改的文件（每个文件一次）
-5. create_pull_request(ref, title, ...)     # 开 PR
+POST /events/{id}/fix
+  │
+  ├─ AgentHarness.run() → LLM 调工具探索代码
+  ├─ 解析 JSON → FixFileChange 列表
+  ├─ create_branch()       POST /repos/{o}/{n}/git/refs
+  ├─ create_or_update_file() PUT /repos/{o}/{n}/contents/{path}
+  └─ create_pull_request()  POST /repos/{o}/{n}/pulls
 ```
-
-各步骤对应 GitHub API：
-
-| 步骤 | 方法 | API |
-|------|------|-----|
-| 建分支 | `create_branch()` | `POST /repos/{o}/{n}/git/refs` |
-| 改文件 | `create_or_update_file()` | `PUT /repos/{o}/{n}/contents/{path}` |
-| 开 PR | `create_pull_request()` | `POST /repos/{o}/{n}/pulls` |
