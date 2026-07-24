@@ -1,7 +1,8 @@
 import { useCallback, useState, useEffect } from 'react'
 import { BookOpen, Loader2, Plus, RefreshCw } from 'lucide-react'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+  || `${window.location.protocol}//${window.location.hostname}:8000`
 
 type FaqEntry = {
   id: number
@@ -196,4 +197,3 @@ async function responseError(response: Response, fallback: string): Promise<stri
   const body = await response.json().catch(() => null)
   return body?.detail ?? `${fallback}（${response.status}）`
 }
-

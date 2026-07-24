@@ -5,7 +5,8 @@
  * Keep them in sync when making changes on either side.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+  || `${window.location.protocol}//${window.location.hostname}:8000`
 
 // -- Types (mirrors backend/app/schemas/) ---------------------------------
 
@@ -179,6 +180,82 @@ export type RepositoryListItem = {
   synced_at: string
   issue_count: number
   file_count: number
+}
+
+export type User = {
+  id: string
+  name: string
+  email: string
+  created_at: string
+  updated_at: string
+}
+
+export type UserPayload = {
+  name: string
+  email: string
+}
+
+export type SystemConfig = {
+  llm_api_base_url: string
+  llm_model: string
+  llm_api_key_configured: boolean
+  github_token_configured: boolean
+  github_webhook_secret_configured: boolean
+}
+
+export type SystemConfigUpdate = {
+  llm_api_base_url?: string
+  llm_model?: string
+  llm_api_key?: string
+  github_token?: string
+  github_webhook_secret?: string
+  clear_llm_api_key?: boolean
+  clear_github_token?: boolean
+  clear_github_webhook_secret?: boolean
+}
+
+async function userResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `用户请求失败：${response.status}`)
+  }
+  return response.status === 204 ? (undefined as T) : response.json()
+}
+
+export async function fetchUsers(): Promise<User[]> {
+  return userResponse(await fetch(`${API_BASE_URL}/api/users`))
+}
+
+export async function createUser(payload: UserPayload): Promise<User> {
+  return userResponse(await fetch(`${API_BASE_URL}/api/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }))
+}
+
+export async function updateUser(userId: string, payload: Partial<UserPayload>): Promise<User> {
+  return userResponse(await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }))
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  return userResponse(await fetch(`${API_BASE_URL}/api/users/${userId}`, { method: 'DELETE' }))
+}
+
+export async function fetchSystemConfig(): Promise<SystemConfig> {
+  return userResponse(await fetch(`${API_BASE_URL}/api/users/config`))
+}
+
+export async function updateSystemConfig(payload: SystemConfigUpdate): Promise<SystemConfig> {
+  return userResponse(await fetch(`${API_BASE_URL}/api/users/config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }))
 }
 
 /** List synced repositories. */

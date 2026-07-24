@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import {
   Activity, AlertCircle, ArrowRight, Bell, BookOpen, Bot, ChevronDown, CircleDot,
   Database, FolderGit, GitBranch, LayoutDashboard, Loader2, Network,
-  RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Star,
+  RefreshCw, Search, Settings2, ShieldCheck, Sparkles, Star, Users,
 } from 'lucide-react'
 import './App.css'
 
@@ -25,6 +25,7 @@ import { FileBrowser } from './components/FileBrowser'
 import { ChatSidebar } from './components/ChatSidebar'
 import { IssueDetailModal, IssueOverviewModal, SyncedIssueModal } from './components/IssueModals'
 import { ProjectAnalysisPanel } from './components/ProjectAnalysisPanel'
+import { UserManagement } from './components/UserManagement'
 
 /**
  * App — Single-page sync-and-dashboard application.
@@ -38,7 +39,7 @@ const defaultForm = {
   max_tree_items: 600,
 }
 
-type WorkspaceSection = 'overview' | 'analysis' | 'issues' | 'agent' | 'faq'
+type WorkspaceSection = 'overview' | 'analysis' | 'issues' | 'agent' | 'faq' | 'users'
 
 function App() {
   const [form, setForm] = useState(defaultForm)
@@ -233,6 +234,11 @@ function App() {
   function handleWorkspaceNavigation(section: WorkspaceSection) {
     setActiveWorkspaceSection(section)
 
+    if (section === 'users') {
+      setAnalysisSection(null)
+      return
+    }
+
     if (section === 'agent') {
       setChatFocusRequest((current) => current + 1)
       if (window.innerWidth <= 1020) {
@@ -340,6 +346,7 @@ function App() {
           <button aria-pressed={activeWorkspaceSection === 'issues'} className={activeWorkspaceSection === 'issues' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('issues')}><Activity size={17} />Issue 智能分析</button>
           <button aria-pressed={activeWorkspaceSection === 'agent'} className={activeWorkspaceSection === 'agent' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('agent')}><Bot size={17} />仓库问答</button>
           <button aria-pressed={activeWorkspaceSection === 'faq'} className={activeWorkspaceSection === 'faq' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('faq')}><BookOpen size={17} />FAQ 知识库</button>
+          <button aria-pressed={activeWorkspaceSection === 'users'} className={activeWorkspaceSection === 'users' ? 'active' : ''} type="button" onClick={() => handleWorkspaceNavigation('users')}><Users size={17} />用户管理</button>
         </nav>
 
         <div className="sidebar-actions">
@@ -379,7 +386,7 @@ function App() {
           <div className="breadcrumb">
             <span>IssueScope</span>
             <ArrowRight size={14} aria-hidden="true" />
-            <strong>{analysisSection ? '项目解析' : snapshot?.identity.name ?? '仓库工作台'}</strong>
+            <strong>{activeWorkspaceSection === 'users' ? '用户管理' : analysisSection ? '项目解析' : snapshot?.identity.name ?? '仓库工作台'}</strong>
           </div>
           <div className="top-actions">
             <span className="live-status"><span /> 前端在线</span>
@@ -512,7 +519,9 @@ function App() {
           </div>
         )}
 
-        {activeWorkspaceSection === 'faq' ? (
+        {activeWorkspaceSection === 'users' ? (
+          <UserManagement />
+        ) : activeWorkspaceSection === 'faq' ? (
           snapshot ? (
             <FaqPage owner={snapshot.identity.owner} name={snapshot.identity.name} />
           ) : (
