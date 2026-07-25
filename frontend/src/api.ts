@@ -114,6 +114,8 @@ export type AssistantCitation = {
   label: string
   url: string | null
   path: string | null
+  line_start: number | null
+  line_end: number | null
 }
 
 export type AssistantChatRequest = {

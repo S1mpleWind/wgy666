@@ -46,6 +46,8 @@ class AssistantCitation(BaseModel):
     label: str
     url: HttpUrl | None = None
     path: str | None = None
+    line_start: int | None = Field(default=None, ge=1)
+    line_end: int | None = Field(default=None, ge=1)
 
 
 class AssistantChatResponse(BaseModel):

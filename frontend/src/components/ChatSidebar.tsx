@@ -4,14 +4,17 @@
 import { useState, useEffect, useRef } from 'react'
 import type { FormEvent } from 'react'
 import {
-  AlertCircle, Bot, Loader2, Send, Sparkles, UserRound,
+  AlertCircle, Bot, ExternalLink, FileCode2, Loader2, Send, Sparkles, UserRound, X,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { askAssistant } from '../api'
-import type { AssistantChatMessage, AssistantChatResponse, RepositorySnapshot } from '../api'
+import { askAssistant, fetchFileContent } from '../api'
+import type {
+  AssistantChatMessage, AssistantChatResponse, AssistantCitation, RepositoryFileContent, RepositorySnapshot,
+} from '../api'
 import '../component-css/ChatSidebar.css'
+import '../component-css/FileBrowser.css'
 
 type ChatThreadMessage = AssistantChatMessage & {
   toolCalls?: AssistantChatResponse['tool_calls']
@@ -35,6 +38,10 @@ export function ChatSidebar({
   const [input, setInput] = useState('')
   const [isAsking, setIsAsking] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
+  const [selectedCitation, setSelectedCitation] = useState<AssistantCitation | null>(null)
+  const [citationContent, setCitationContent] = useState<RepositoryFileContent | null>(null)
+  const [citationLoading, setCitationLoading] = useState(false)
+  const [citationError, setCitationError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const repositoryName = snapshot?.identity.full_name ?? null
 
@@ -53,11 +60,61 @@ export function ChatSidebar({
     ])
     setInput('')
     setChatError(null)
+    closeCitation()
   }, [repositoryName])
+
+  useEffect(() => {
+    if (!selectedCitation) return undefined
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeCitation()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedCitation])
 
   function selectPrompt(prompt: string) {
     setInput(prompt)
     window.requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
+  function closeCitation() {
+    setSelectedCitation(null)
+    setCitationContent(null)
+    setCitationError(null)
+    setCitationLoading(false)
+  }
+
+  async function openCitation(citation: AssistantCitation) {
+    if (!snapshot || !citation.path) return
+
+    setSelectedCitation(citation)
+    setCitationContent(null)
+    setCitationError(null)
+    setCitationLoading(true)
+
+    try {
+      const content = await fetchFileContent(
+        snapshot.identity.owner,
+        snapshot.identity.name,
+        citation.path,
+      )
+      setCitationContent(content)
+    } catch (exc) {
+      setCitationError(exc instanceof Error ? exc.message : '加载引用代码失败')
+    } finally {
+      setCitationLoading(false)
+    }
+  }
+
+  function githubFileUrl(citation: AssistantCitation) {
+    if (!snapshot || !citation.path) return snapshot?.identity.html_url ?? '#'
+    const encodedPath = citation.path.split('/').map(encodeURIComponent).join('/')
+    const lineAnchor = citation.line_start
+      ? `#L${citation.line_start}${citation.line_end && citation.line_end !== citation.line_start ? `-L${citation.line_end}` : ''}`
+      : ''
+    return `${snapshot.identity.html_url}/blob/${encodeURIComponent(snapshot.identity.default_branch)}/${encodedPath}${lineAnchor}`
   }
 
   async function handleAsk(event: FormEvent<HTMLFormElement>) {
@@ -147,9 +204,20 @@ export function ChatSidebar({
                 <div className="citation-list">
                   {message.citations.slice(0, 5).map((citation) => (
                     citation.url ? (
-                      <a href={citation.url} target="_blank" key={`${citation.type}-${citation.label}`}>
+                      <a href={citation.url} rel="noreferrer" target="_blank" key={`${citation.type}-${citation.label}`}>
                         {citation.type}: {citation.label}
                       </a>
+                    ) : citation.path ? (
+                      <button
+                        className="citation-button"
+                        key={`${citation.type}-${citation.label}`}
+                        onClick={() => openCitation(citation)}
+                        title={`查看 ${citation.path}`}
+                        type="button"
+                      >
+                        <FileCode2 size={12} aria-hidden="true" />
+                        {citation.type}: {citation.label}
+                      </button>
                     ) : (
                       <span key={`${citation.type}-${citation.label}`}>
                         {citation.type}: {citation.label}
@@ -199,6 +267,75 @@ export function ChatSidebar({
         </div>
         <p><Sparkles size={12} />回答基于同步仓库数据，重要结论会标注来源</p>
       </form>
+
+      {selectedCitation && (
+        <div className="code-viewer-overlay" onMouseDown={closeCitation}>
+          <section
+            aria-label={`${selectedCitation.path} 引用代码`}
+            aria-modal="true"
+            className="code-viewer citation-code-viewer"
+            onMouseDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header className="code-viewer-header">
+              <div>
+                <FileCode2 size={18} aria-hidden="true" />
+                <div>
+                  <strong>{selectedCitation.path}</strong>
+                  <span className="code-viewer-meta">
+                    问答引用
+                    {selectedCitation.line_start && ` · 第 ${selectedCitation.line_start}${selectedCitation.line_end ? `-${selectedCitation.line_end}` : ''} 行`}
+                  </span>
+                </div>
+              </div>
+              <div className="citation-viewer-actions">
+                <a href={githubFileUrl(selectedCitation)} rel="noreferrer" target="_blank">
+                  <ExternalLink size={15} aria-hidden="true" />
+                  GitHub
+                </a>
+                <button className="ghost-button" onClick={closeCitation} aria-label="关闭引用代码">
+                  <X size={18} />
+                </button>
+              </div>
+            </header>
+            <div className="code-viewer-body">
+              {citationLoading ? (
+                <div className="code-viewer-loading">
+                  <Loader2 className="spin" size={24} aria-hidden="true" />
+                  <span>正在读取引用代码...</span>
+                </div>
+              ) : citationError ? (
+                <div className="citation-viewer-error">
+                  <div className="notice error">
+                    <AlertCircle size={16} aria-hidden="true" />
+                    <span>{citationError}</span>
+                  </div>
+                  <a href={githubFileUrl(selectedCitation)} rel="noreferrer" target="_blank">
+                    前往 GitHub 查看文件 <ExternalLink size={14} aria-hidden="true" />
+                  </a>
+                </div>
+              ) : citationContent ? (
+                <div className="citation-code-lines" role="list">
+                  {citationContent.content.split('\n').map((line, index) => {
+                    const lineNumber = index + 1
+                    const highlightedLine = Boolean(
+                      selectedCitation.line_start
+                      && lineNumber >= selectedCitation.line_start
+                      && lineNumber <= (selectedCitation.line_end ?? selectedCitation.line_start),
+                    )
+                    return (
+                      <div className={highlightedLine ? 'highlighted' : ''} key={lineNumber} role="listitem">
+                        <span aria-hidden="true">{lineNumber}</span>
+                        <code>{line || ' '}</code>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      )}
     </aside>
   )
 }

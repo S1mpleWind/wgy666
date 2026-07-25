@@ -373,6 +373,7 @@
 
 .citation-list a,
 .citation-list span,
+.citation-list button,
 .cache-note {
   border-radius: 6px;
   background: #eef2f6;
@@ -382,8 +383,103 @@
   text-decoration: none;
 }
 
-.citation-list a:hover {
+.citation-list button {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-height: 0;
+  border: 0;
+  gap: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.citation-list a:hover,
+.citation-list button:hover {
   background: #dfeaf5;
+  color: var(--color-primary);
+}
+
+.citation-code-viewer {
+  width: min(1040px, 100%);
+}
+
+.citation-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.citation-viewer-actions > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.citation-viewer-actions > a:hover {
+  border-color: #a8bfd9;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.citation-code-lines {
+  min-width: max-content;
+  padding: 12px 0;
+  color: #1a232e;
+  background: #fafbfc;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.citation-code-lines > div {
+  display: grid;
+  grid-template-columns: 58px minmax(max-content, 1fr);
+  min-height: 21px;
+}
+
+.citation-code-lines > div > span {
+  padding-right: 14px;
+  color: #8a96a3;
+  text-align: right;
+  user-select: none;
+}
+
+.citation-code-lines code {
+  padding-right: 24px;
+  white-space: pre;
+  font: inherit;
+}
+
+.citation-code-lines > div.highlighted {
+  background: #fff3bf;
+  box-shadow: inset 3px 0 0 #e5a000;
+}
+
+.citation-viewer-error {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 24px;
+}
+
+.citation-viewer-error > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .cache-note {

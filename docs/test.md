@@ -61,14 +61,15 @@ uv run pytest -k "test_handle_bug" -v
 | `test_get_event_detail_*` | 事件详情：存在、不存在、分类字段完整 |
 | `test_approved_reply_is_posted_*` | 确认回复自动发布 |
 
-### `test_concurrency.py` — 并发与压力测试
+### `test_concurrency.py` — 异步并发正确性测试
 
 | 测试 | 验证 |
 |------|------|
-| `test_rapid_webhooks_same_repo` | 10 个快速事件发到同一仓库，全部存储 |
-| `test_interleaved_read_write` | 写入中间穿插读取，不冲突 |
-| `test_dedup_by_delivery_id` | 同一 delivery_id 不重复计算 |
-| `test_missing_event_header_422` | 缺事件头返回 422 |
+| `test_concurrent_webhooks_same_repo` | 20 个事件并发发送到同一仓库，全部存储 |
+| `test_concurrent_reads_and_writes_do_not_conflict` | 读取和写入同时执行，不冲突 |
+| `test_concurrent_duplicate_delivery_id_is_deduplicated` | 同一 delivery_id 并发重试不产生重复记录 |
+| `test_webhook_requests_overlap_in_time` | 验证路由实际存在多个同时处理的请求 |
+| `test_missing_event_header_returns_422` | 缺事件头返回 422 |
 
 ### `test_auto_reply.py` — 自动回复服务
 
@@ -182,7 +183,7 @@ uv run pytest -k "test_handle_bug" -v
 - **Webhook 测试**不需要外部依赖，使用 in-memory 存储
 - **Assistant 测试**需要 `LLM_API_KEY` 配置，无 key 时自动跳过
 - **FAQ 记忆测试**使用 SQLite（临时文件），不依赖 PostgreSQL
-- **并发测试**使用同步 TestClient 模拟快速请求
+- **并发正确性测试**使用 `httpx.AsyncClient` 同时发起请求；实际性能数据使用 `scripts/load_test.py` 测量
 
 ```bash
 # 全部测试（跳过需要 LLM key 的）
