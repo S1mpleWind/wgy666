@@ -491,6 +491,69 @@ def test_approved_reply_is_posted_without_regeneration(client, clear_store, monk
     assert response.json()["source"] == "approved_draft"
 
 
+def test_fix_endpoint_returns_404_for_nonexistent_event(client):
+    """POST /events/{id}/fix with unknown event_id → 404."""
+    resp = client.post("/api/webhooks/events/nonexistent-id/fix")
+    assert resp.status_code == 404
+
+
+def test_fix_endpoint_returns_400_for_no_classification(client, clear_store):
+    """POST /events/{id}/fix on event without classification → 400."""
+    # Send an event that has no classification (closed event).
+    payload = {
+        "action": "closed",
+        "issue": {"title": "Test", "body": "", "number": 1,
+                  "html_url": "https://github.com/o/r/issues/1",
+                  "state": "closed", "user": {"login": "t"}, "comments": 0},
+        "repository": {"full_name": "o/r"},
+    }
+    client.post(
+        "/api/webhooks/github", json=payload,
+        headers={"X-GitHub-Event": "issues", "X-GitHub-Delivery": "no-cls-evt"},
+    )
+    resp = client.post("/api/webhooks/events/no-cls-evt/fix")
+    assert resp.status_code == 400
+
+
+def test_fix_endpoint_returns_502_when_llm_not_configured(client, clear_store):
+    """POST /events/{id}/fix without LLM → 502."""
+    from app.core.config import settings
+    settings.llm_api_key = None
+
+    payload = {
+        "action": "opened",
+        "issue": {"title": "Bug: crash", "body": "Error", "number": 2,
+                  "html_url": "https://github.com/o/r/issues/2",
+                  "state": "open", "user": {"login": "t"}, "comments": 0},
+        "repository": {"full_name": "o/r"},
+    }
+    client.post(
+        "/api/webhooks/github", json=payload,
+        headers={"X-GitHub-Event": "issues", "X-GitHub-Delivery": "fix-test-evt"},
+    )
+    resp = client.post("/api/webhooks/events/fix-test-evt/fix")
+    assert resp.status_code == 502
+    assert resp.json()["detail"]
+    assert "not configured" in resp.json()["detail"].lower() or "not yet implemented" in resp.json()["detail"].lower()
+
+
+def test_fix_endpoint_ignores_non_bug_issues(client, clear_store):
+    """POST /events/{id}/fix on a question issue → 502 (not a bug)."""
+    payload = {
+        "action": "opened",
+        "issue": {"title": "How to do X?", "body": "Help", "number": 3,
+                  "html_url": "https://github.com/o/r/issues/3",
+                  "state": "open", "user": {"login": "t"}, "comments": 0},
+        "repository": {"full_name": "o/r"},
+    }
+    client.post(
+        "/api/webhooks/github", json=payload,
+        headers={"X-GitHub-Event": "issues", "X-GitHub-Delivery": "q-evt"},
+    )
+    resp = client.post("/api/webhooks/events/q-evt/fix")
+    assert resp.status_code == 502
+
+
 def test_event_list_recovers_persisted_rows_after_memory_is_cleared(tmp_path):
     from app.core.config import settings
     from app.storage.database import create_database_engine, initialize_database
