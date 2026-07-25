@@ -149,7 +149,7 @@ function ArchitectureView({ analysis, repository, onSelect }: { analysis: Projec
       <section className="structure-panel architecture-panel">
         <div className="structure-panel-heading">
           <div>
-            <p>Repository map</p>
+            <p>仓库架构</p>
             <h3>{repository.identity.name} 结构视图</h3>
           </div>
           <span>{analysis.analyzedFileCount} 个文件样本</span>
@@ -163,7 +163,7 @@ function ArchitectureView({ analysis, repository, onSelect }: { analysis: Projec
       <section className="structure-panel">
         <div className="structure-panel-heading">
           <div>
-            <p>Analysis pipeline</p>
+            <p>解析流程</p>
             <h3>自动化解析流程</h3>
           </div>
         </div>

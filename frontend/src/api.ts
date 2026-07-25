@@ -79,6 +79,7 @@ export type RepositorySnapshot = {
   topics: string[]
   readme: string | null
   files: ClassifiedFile[]
+  source_contents?: RepositoryFileContent[]
   file_categories: CategorySummary[]
   issues: GitHubIssue[]
   issue_categories: CategorySummary[]
