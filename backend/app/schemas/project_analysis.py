@@ -21,6 +21,7 @@ class ProjectDependency(BaseModel):
     ecosystem: str
     group: str
     source_file: str
+    version: str | None = None
 
 
 class ProjectAnalysis(BaseModel):

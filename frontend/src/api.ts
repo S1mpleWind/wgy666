@@ -85,6 +85,7 @@ export type RepositorySnapshot = {
   issue_categories: CategorySummary[]
   pull_requests: PullRequestSummary[]
   recent_commits: CommitSummary[]
+  source_revision: string | null
   synced_at: string
 }
 
@@ -149,6 +150,123 @@ export type ProjectDependency = {
   ecosystem: string
   group: string
   source_file: string
+  version: string | null
+}
+
+export type CodeSymbol = {
+  key: string
+  name: string
+  qualified_name: string
+  kind: 'module' | 'class' | 'function' | 'method' | 'component' | 'dependency'
+  path: string | null
+  language: string
+  line_start: number | null
+  line_end: number | null
+  parent_key: string | null
+  fingerprint: string | null
+  metadata: Record<string, unknown>
+}
+
+export type CodeRelation = {
+  source: string
+  target: string
+  relation: 'contains' | 'imports' | 'calls' | 'tests'
+  evidence_path: string | null
+  evidence_line: number | null
+  confidence: number
+}
+
+export type ApiRoute = {
+  method: string
+  route: string
+  handler_key: string
+  handler_name: string
+  path: string
+  line: number
+}
+
+export type TestMapping = {
+  test_path: string
+  source_paths: string[]
+  confidence: number
+  reason: string
+}
+
+export type ArchitectureDependency = ProjectDependency
+
+export type ArchitectureHealthIssue = {
+  code: string
+  severity: 'info' | 'warning' | 'critical'
+  title: string
+  description: string
+  evidence_paths: string[]
+  suggestion: string
+}
+
+export type ArchitectureAnalysis = {
+  repository: string
+  revision: string
+  generated_at: string
+  parser_version: string
+  coverage: {
+    discovered_files: number
+    indexed_files: number
+    discovered_source_files: number
+    parsed_source_files: number
+    truncated_files: number
+    file_coverage_percent: number
+    parser_coverage_percent: number
+    warnings: string[]
+  }
+  symbols: CodeSymbol[]
+  relations: CodeRelation[]
+  routes: ApiRoute[]
+  test_mappings: TestMapping[]
+  dependencies: ArchitectureDependency[]
+  health: {
+    score: number
+    grade: string
+    metrics: Record<string, number>
+    issues: ArchitectureHealthIssue[]
+  }
+}
+
+export type ImpactAnalysis = {
+  repository: string
+  revision: string
+  seed_paths: string[]
+  affected_files: string[]
+  affected_symbols: CodeSymbol[]
+  recommended_tests: TestMapping[]
+  affected_routes: ApiRoute[]
+  risk_score: number
+  risk_level: string
+  reasons: string[]
+  nodes: Array<{ key: string; label: string; kind: string; path: string | null; depth: number; reason: string }>
+  edges: Array<{ source: string; target: string; relation: string }>
+}
+
+export type ArchitectureHistoryItem = {
+  revision: string
+  generated_at: string
+  symbol_count: number
+  relation_count: number
+  route_count: number
+  health_score: number
+}
+
+export type ArchitectureDiff = {
+  repository: string
+  base_revision: string
+  target_revision: string
+  added_symbols: CodeSymbol[]
+  removed_symbols: CodeSymbol[]
+  changed_symbols: CodeSymbol[]
+  added_routes: ApiRoute[]
+  removed_routes: ApiRoute[]
+  added_dependencies: ArchitectureDependency[]
+  removed_dependencies: ArchitectureDependency[]
+  health_score_delta: number
 }
 
 export type ProjectStructureResponse = {
@@ -452,6 +570,70 @@ export async function fetchProjectStructure(
     throw new Error(error?.detail ?? `Failed to fetch project structure: ${response.status}`)
   }
 
+  return response.json()
+}
+
+export async function fetchArchitectureAnalysis(
+  owner: string,
+  name: string,
+  revision?: string,
+): Promise<ArchitectureAnalysis> {
+  const query = revision ? `?revision=${encodeURIComponent(revision)}` : ''
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tools/architecture${query}`,
+  )
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch architecture analysis: ${response.status}`)
+  }
+  return response.json()
+}
+
+export async function analyzeArchitectureImpact(
+  owner: string,
+  name: string,
+  payload: { paths?: string[]; issue_text?: string; max_depth?: number },
+): Promise<ImpactAnalysis> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tools/architecture/impact`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  )
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to analyze architecture impact: ${response.status}`)
+  }
+  return response.json()
+}
+
+export async function fetchArchitectureHistory(owner: string, name: string): Promise<ArchitectureHistoryItem[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tools/architecture/history`,
+  )
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to fetch architecture history: ${response.status}`)
+  }
+  return response.json()
+}
+
+export async function fetchArchitectureDiff(
+  owner: string,
+  name: string,
+  baseRevision: string,
+  targetRevision: string,
+): Promise<ArchitectureDiff> {
+  const query = new URLSearchParams({ base_revision: baseRevision, target_revision: targetRevision })
+  const response = await fetch(
+    `${API_BASE_URL}/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tools/architecture/diff?${query}`,
+  )
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.detail ?? `Failed to compare architecture revisions: ${response.status}`)
+  }
   return response.json()
 }
 

@@ -67,6 +67,20 @@ class RepositoryToolRegistry:
                     "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
                 },
             },
+            self._function(
+                "semantic_architecture",
+                "Inspect parsed modules, classes, functions, imports, API routes, test mappings, coverage, and architecture health.",
+                {},
+            ),
+            self._function(
+                "change_impact",
+                "Trace files, symbols, API routes, and tests affected by selected source paths or issue text.",
+                {
+                    "paths": {"type": "array", "items": {"type": "string"}},
+                    "issue_text": {"type": "string"},
+                    "max_depth": {"type": "integer", "minimum": 1, "maximum": 4},
+                },
+            ),
             {
                 "type": "function",
                 "function": {
@@ -191,6 +205,15 @@ class RepositoryToolRegistry:
             return self.tools.overview(snapshot)
         if name == "project_structure":
             return self.tools.project_structure(snapshot)
+        if name == "semantic_architecture":
+            return self.tools.semantic_architecture(snapshot)
+        if name == "change_impact":
+            return self.tools.change_impact(
+                snapshot,
+                paths=arguments.get("paths") or [],
+                issue_text=arguments.get("issue_text"),
+                max_depth=arguments.get("max_depth", 2),
+            )
         if name == "search_files":
             return self.tools.search_files(
                 snapshot,

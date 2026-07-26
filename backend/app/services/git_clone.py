@@ -31,7 +31,9 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import re
 import shutil
+import subprocess
 import tempfile
 
 from app.core.config import settings
@@ -139,6 +141,24 @@ class GitCloneService:
             items = rng.sample(items, limit)
 
         return items
+
+    def head_revision(self) -> str | None:
+        """Return the cloned HEAD commit SHA for versioned analysis results."""
+        if not self._workdir:
+            return None
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=self._workdir,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        revision = result.stdout.strip().lower()
+        return revision if re.fullmatch(r"[0-9a-f]{40}", revision) else None
 
     def read_file(self, path: str, max_bytes: int) -> tuple[str | None, bool]:
         """Read file content from the local clone.

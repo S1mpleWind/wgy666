@@ -6,7 +6,9 @@ Data is lost on server restart.
 
 from __future__ import annotations
 
+from app.schemas.architecture import ArchitectureAnalysis, ArchitectureHistoryItem
 from app.schemas.repository import RepositoryListItem, RepositorySnapshot
+from app.services.architecture_analysis import ArchitectureAnalysisService
 
 
 class InMemoryRepositoryStore:
@@ -14,10 +16,12 @@ class InMemoryRepositoryStore:
 
     def __init__(self) -> None:
         self._snapshots: dict[str, RepositorySnapshot] = {}
+        self._architecture_history: dict[str, dict[str, ArchitectureAnalysis]] = {}
 
     def save(self, snapshot: RepositorySnapshot) -> None:
         """Persist (or overwrite) a snapshot keyed by ``owner/name``."""
         self._snapshots[self._key(snapshot.identity.owner, snapshot.identity.name)] = snapshot
+        self.save_architecture_analysis(snapshot)
 
     def get(self, owner: str, name: str) -> RepositorySnapshot | None:
         """Retrieve a snapshot by owner and name, or ``None`` if not synced."""
@@ -64,6 +68,54 @@ class InMemoryRepositoryStore:
         """Return single file content by path, or None."""
         results = self.get_file_contents(owner, name, path)
         return results[0] if results else None
+
+    def save_architecture_analysis(
+        self,
+        snapshot: RepositorySnapshot,
+        analysis: ArchitectureAnalysis | None = None,
+    ) -> ArchitectureAnalysis:
+        key = self._key(snapshot.identity.owner, snapshot.identity.name)
+        revision = ArchitectureAnalysisService.revision_for(snapshot)
+        history = self._architecture_history.setdefault(key, {})
+        existing = history.get(revision)
+        if (
+            analysis is None
+            and existing is not None
+            and existing.coverage.indexed_files == len(snapshot.source_contents)
+            and existing.parser_version == ArchitectureAnalysisService.parser_version
+        ):
+            return existing
+        result = analysis or ArchitectureAnalysisService().analyze(snapshot)
+        history[result.revision] = result
+        if len(history) > 20:
+            oldest = min(history.values(), key=lambda item: item.generated_at)
+            history.pop(oldest.revision, None)
+        return result
+
+    def get_architecture_analysis(
+        self,
+        owner: str,
+        name: str,
+        revision: str | None = None,
+    ) -> ArchitectureAnalysis | None:
+        history = self._architecture_history.get(self._key(owner, name), {})
+        if revision:
+            return history.get(revision)
+        return max(history.values(), key=lambda item: item.generated_at, default=None)
+
+    def list_architecture_analyses(self, owner: str, name: str) -> list[ArchitectureHistoryItem]:
+        history = self._architecture_history.get(self._key(owner, name), {})
+        return [
+            ArchitectureHistoryItem(
+                revision=item.revision,
+                generated_at=item.generated_at,
+                symbol_count=len(item.symbols),
+                relation_count=len(item.relations),
+                route_count=len(item.routes),
+                health_score=item.health.score,
+            )
+            for item in sorted(history.values(), key=lambda value: value.generated_at, reverse=True)
+        ]
 
     def _key(self, owner: str, name: str) -> str:
         return f"{owner.lower()}/{name.lower()}"

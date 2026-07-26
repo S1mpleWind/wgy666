@@ -8,7 +8,9 @@ import sys
 from typing import Any
 
 from app.schemas.assistant import AssistantCitation, AssistantToolCall
+from app.schemas.architecture import ImpactAnalysisRequest
 from app.schemas.repository import RepositorySnapshot
+from app.services.architecture_analysis import ArchitectureAnalysisService
 from app.services.knowledge_graph import KnowledgeGraphService
 from app.services.project_analysis import ProjectAnalysisService
 from app.services.repository_query import RepositoryQueryService
@@ -31,6 +33,7 @@ class RepositoryAssistantTools:
     def __init__(self) -> None:
         self.query = RepositoryQueryService()
         self.project_analysis = ProjectAnalysisService()
+        self.architecture_analysis = ArchitectureAnalysisService()
         self.knowledge_graph = KnowledgeGraphService()
 
     def read_file(self, snapshot: RepositorySnapshot, path: str, start_line: int | None = None,
@@ -190,6 +193,115 @@ class RepositoryAssistantTools:
                 name="project_structure",
                 args={},
                 summary="Analyze synced file tree for stack, directories, entries, tests, docs, and dependencies.",
+            ),
+            content=content,
+            citations=citations,
+        )
+
+    def semantic_architecture(self, snapshot: RepositorySnapshot) -> ToolResult:
+        analysis = repository_store.get_architecture_analysis(
+            snapshot.identity.owner,
+            snapshot.identity.name,
+        )
+        if analysis is None:
+            analysis = repository_store.save_architecture_analysis(
+                snapshot,
+                self.architecture_analysis.analyze(snapshot),
+            )
+        module_count = sum(symbol.kind == "module" for symbol in analysis.symbols)
+        symbol_count = sum(symbol.kind in {"class", "function", "method", "component"} for symbol in analysis.symbols)
+        content = "\n".join([
+            f"Revision: {analysis.revision}",
+            f"Modules: {module_count}",
+            f"Code symbols: {symbol_count}",
+            f"Relations: {len(analysis.relations)}",
+            f"API routes: {len(analysis.routes)}",
+            f"Test mappings: {len(analysis.test_mappings)}",
+            f"Architecture health: {analysis.health.score}/100 ({analysis.health.grade})",
+            f"File coverage: {analysis.coverage.file_coverage_percent}%",
+            f"Parser coverage: {analysis.coverage.parser_coverage_percent}%",
+            "Health findings:",
+            *(
+                f"- [{issue.severity}] {issue.title}: {issue.description}"
+                for issue in analysis.health.issues[:8]
+            ),
+            "Routes:",
+            *(f"- {route.method} {route.route} -> {route.handler_name} ({route.path}:{route.line})" for route in analysis.routes[:20]),
+        ])
+        citations = [
+            AssistantCitation(
+                type="source_symbol",
+                label=symbol.qualified_name,
+                path=symbol.path,
+                line_start=symbol.line_start,
+                line_end=symbol.line_end,
+            )
+            for symbol in analysis.symbols
+            if symbol.kind in {"class", "function", "method", "component"} and symbol.path
+        ][:8]
+        return ToolResult(
+            call=AssistantToolCall(
+                name="semantic_architecture",
+                args={},
+                summary="Read deterministic source symbols, relations, routes, tests, and health evidence.",
+            ),
+            content=content,
+            citations=citations,
+        )
+
+    def change_impact(
+        self,
+        snapshot: RepositorySnapshot,
+        paths: list[str],
+        issue_text: str | None,
+        max_depth: int,
+    ) -> ToolResult:
+        if not paths and not (issue_text or "").strip():
+            return self._simple(
+                "change_impact",
+                {"paths": paths, "issue_text": issue_text, "max_depth": max_depth},
+                "Provide at least one source path or a concrete Issue description before running impact analysis.",
+            )
+        analysis = repository_store.get_architecture_analysis(snapshot.identity.owner, snapshot.identity.name)
+        if analysis is None:
+            analysis = repository_store.save_architecture_analysis(
+                snapshot,
+                self.architecture_analysis.analyze(snapshot),
+            )
+        impact = self.architecture_analysis.impact(
+            analysis,
+            ImpactAnalysisRequest(paths=paths, issue_text=issue_text, max_depth=max_depth),
+        )
+        content = "\n".join([
+            f"Risk: {impact.risk_level} ({impact.risk_score}/100)",
+            f"Seed paths: {', '.join(impact.seed_paths) or 'none resolved'}",
+            "Affected files:",
+            *(f"- {path}" for path in impact.affected_files[:30]),
+            "Recommended tests:",
+            *(f"- {item.test_path}: {item.reason}" for item in impact.recommended_tests[:20]),
+            "Reasons:",
+            *(f"- {reason}" for reason in impact.reasons),
+        ])
+        symbol_by_path = {
+            symbol.path: symbol
+            for symbol in impact.affected_symbols
+            if symbol.path and symbol.line_start
+        }
+        citations = [
+            AssistantCitation(
+                type="impact_file",
+                label=path,
+                path=path,
+                line_start=symbol_by_path[path].line_start if path in symbol_by_path else None,
+                line_end=symbol_by_path[path].line_end if path in symbol_by_path else None,
+            )
+            for path in impact.affected_files[:8]
+        ]
+        return ToolResult(
+            call=AssistantToolCall(
+                name="change_impact",
+                args={"paths": paths, "issue_text": issue_text, "max_depth": max_depth},
+                summary="Trace deterministic source impact and related regression tests.",
             ),
             content=content,
             citations=citations,

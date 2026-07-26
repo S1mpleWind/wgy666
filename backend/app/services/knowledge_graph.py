@@ -53,6 +53,7 @@ from app.schemas.knowledge import (
     KnowledgeSearchResult,
     RepositoryKnowledgeGraph,
 )
+from app.services.architecture_analysis import ArchitectureAnalysisService
 from app.schemas.repository import ClassifiedFile, RepositorySnapshot
 
 
@@ -149,6 +150,7 @@ class KnowledgeGraphService:
         chunks.extend(self._dependency_chunks(nodes, dependency_keys))
         chunks.extend(self._test_chunks(snapshot, nodes, test_keys))
         chunks.extend(self._source_content_chunks(snapshot))
+        self._add_semantic_architecture(snapshot, nodes, edges, chunks, repo_key)
 
         return RepositoryKnowledgeGraph(
             repository=snapshot.identity.full_name,
@@ -156,6 +158,101 @@ class KnowledgeGraphService:
             edges=edges,
             chunks=chunks,
         )
+
+    def _add_semantic_architecture(
+        self,
+        snapshot: RepositorySnapshot,
+        nodes: dict[str, KnowledgeNode],
+        edges: list[KnowledgeEdge],
+        chunks: list[KnowledgeChunk],
+        repo_key: str,
+    ) -> None:
+        """Add AST/import evidence so RAG can answer source-level structure questions."""
+        analysis = ArchitectureAnalysisService().analyze(snapshot)
+        semantic_keys: dict[str, str] = {}
+        for symbol in analysis.symbols[:600]:
+            key = f"semantic:{symbol.key}"
+            semantic_keys[symbol.key] = key
+            nodes[key] = KnowledgeNode(
+                key=key,
+                type=f"code_{symbol.kind}",
+                name=symbol.qualified_name,
+                path=symbol.path,
+                summary=(
+                    f"{symbol.kind} {symbol.qualified_name} in {symbol.path or 'external dependency'}"
+                    f" at lines {symbol.line_start or '?'}-{symbol.line_end or '?'}"
+                ),
+                metadata={
+                    "language": symbol.language,
+                    "line_start": symbol.line_start,
+                    "line_end": symbol.line_end,
+                },
+            )
+            if symbol.kind == "module":
+                edges.append(KnowledgeEdge(source=repo_key, target=key, relation="contains_code_module"))
+
+        for relation in analysis.relations[:1200]:
+            source = semantic_keys.get(relation.source)
+            target = semantic_keys.get(relation.target)
+            if source and target:
+                edges.append(KnowledgeEdge(
+                    source=source,
+                    target=target,
+                    relation=f"code_{relation.relation}",
+                    metadata={
+                        "path": relation.evidence_path,
+                        "line": relation.evidence_line,
+                        "confidence": relation.confidence,
+                    },
+                ))
+
+        by_path: dict[str, list] = defaultdict(list)
+        for symbol in analysis.symbols:
+            if symbol.path and symbol.kind != "module":
+                by_path[symbol.path].append(symbol)
+        for path, symbols in sorted(by_path.items())[:120]:
+            content = "\n".join([
+                f"Source file: {path}",
+                *(
+                    f"- {symbol.kind} {symbol.qualified_name} lines {symbol.line_start}-{symbol.line_end}"
+                    for symbol in symbols[:30]
+                ),
+            ])
+            chunks.append(KnowledgeChunk(
+                key=f"chunk:semantic:{path}",
+                title=f"Symbols in {path}",
+                content=content,
+                source_type="semantic_source",
+                source_path=path,
+                node_keys=[semantic_keys[symbol.key] for symbol in symbols[:30] if symbol.key in semantic_keys],
+                metadata={"focus": "source_code", "revision": analysis.revision},
+            ))
+
+        if analysis.routes:
+            chunks.append(KnowledgeChunk(
+                key="chunk:semantic:routes",
+                title="Detected API routes",
+                content="\n".join(
+                    f"- {route.method} {route.route} -> {route.handler_name} ({route.path}:{route.line})"
+                    for route in analysis.routes
+                ),
+                source_type="api_routes",
+                node_keys=[semantic_keys[route.handler_key] for route in analysis.routes if route.handler_key in semantic_keys],
+                metadata={"focus": "modules", "revision": analysis.revision},
+            ))
+
+        chunks.append(KnowledgeChunk(
+            key="chunk:semantic:health",
+            title="Architecture health findings",
+            content="\n".join([
+                f"Architecture health score: {analysis.health.score}/100 ({analysis.health.grade})",
+                f"File coverage: {analysis.coverage.file_coverage_percent}%",
+                f"Parser coverage: {analysis.coverage.parser_coverage_percent}%",
+                *(f"- [{issue.severity}] {issue.title}: {issue.description}" for issue in analysis.health.issues),
+            ]),
+            source_type="architecture_health",
+            metadata={"focus": "structure", "revision": analysis.revision},
+        ))
 
     def search(
         self,

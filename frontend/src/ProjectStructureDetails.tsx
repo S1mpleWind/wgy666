@@ -11,22 +11,35 @@ import {
   FileText,
   Folder,
   GitBranch,
+  GitCompareArrows,
   Layers3,
   Network,
   Package,
   Play,
+  Radar,
   Settings2,
+  ShieldCheck,
   TestTube2,
   Workflow,
 } from 'lucide-react'
 import type { ClassifiedFile, ProjectDependency, RepositorySnapshot } from './api'
+import type { AdvancedArchitectureSection } from './AdvancedArchitectureViews'
 import './ProjectStructureDetails.css'
 
 const RepositoryArchitectureGraph = lazy(() => import('./RepositoryArchitectureGraph').then((module) => ({
   default: module.RepositoryArchitectureGraph,
 })))
+const AdvancedArchitectureView = lazy(() => import('./AdvancedArchitectureViews').then((module) => ({
+  default: module.AdvancedArchitectureView,
+})))
 
-export type AnalysisSection = 'architecture' | 'directories' | 'dependencies' | 'entrypoints' | 'quality'
+export type AnalysisSection =
+  | 'architecture'
+  | 'directories'
+  | 'dependencies'
+  | 'entrypoints'
+  | 'quality'
+  | AdvancedArchitectureSection
 
 export type ProjectStructureAnalysis = {
   projectType: string
@@ -64,6 +77,10 @@ const sections: Array<{ id: AnalysisSection; label: string; icon: typeof Network
   { id: 'dependencies', label: '依赖文件', icon: Package },
   { id: 'entrypoints', label: '入口文件', icon: Play },
   { id: 'quality', label: '测试与文档', icon: TestTube2 },
+  { id: 'semantic', label: '源码关系', icon: Network },
+  { id: 'impact', label: '变更影响', icon: Radar },
+  { id: 'health', label: '健康检查', icon: ShieldCheck },
+  { id: 'evolution', label: '版本演化', icon: GitCompareArrows },
 ]
 
 const sectionCopy: Record<AnalysisSection, { title: string; description: string }> = {
@@ -86,6 +103,22 @@ const sectionCopy: Record<AnalysisSection, { title: string; description: string 
   quality: {
     title: '测试、文档与工程化',
     description: '汇总测试、文档、配置和 CI/CD 文件，形成项目质量视图。',
+  },
+  semantic: {
+    title: '源码语义关系',
+    description: '从真实源码中提取模块、类、函数、导入、调用与 API 路由。',
+  },
+  impact: {
+    title: 'Issue 变更影响',
+    description: '沿源码关系追踪受影响文件、对外接口和建议回归测试。',
+  },
+  health: {
+    title: '架构健康检查',
+    description: '检测循环依赖、高耦合、超大模块、测试缺口和分析覆盖率。',
+  },
+  evolution: {
+    title: '架构版本演化',
+    description: '对比不同同步版本的符号、路由、依赖和健康度变化。',
   },
 }
 
@@ -139,8 +172,17 @@ export function ProjectStructureDetails({ activeSection, analysis, repository, o
       {activeSection === 'dependencies' && <DependencyView analysis={analysis} />}
       {activeSection === 'entrypoints' && <EntryPointView analysis={analysis} />}
       {activeSection === 'quality' && <QualityView analysis={analysis} />}
+      {isAdvancedSection(activeSection) && (
+        <Suspense fallback={<GraphLoadingState />}>
+          <AdvancedArchitectureView section={activeSection} repository={repository} />
+        </Suspense>
+      )}
     </section>
   )
+}
+
+function isAdvancedSection(section: AnalysisSection): section is AdvancedArchitectureSection {
+  return section === 'semantic' || section === 'impact' || section === 'health' || section === 'evolution'
 }
 
 function ArchitectureView({ analysis, repository, onSelect }: { analysis: ProjectStructureAnalysis; repository: RepositorySnapshot; onSelect: (section: AnalysisSection) => void }) {

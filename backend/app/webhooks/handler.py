@@ -280,7 +280,10 @@ async def handle_issue_event(payload: dict, delivery_id: str | None = None) -> W
                 number=issue_number,
                 title=title,
                 state=issue_data.get("state") or "open",
-                html_url=issue_data.get("html_url") or "",
+                html_url=(
+                    issue_data.get("html_url")
+                    or f"https://github.com/{full_name}/issues/{issue_number}"
+                ),
                 author=(issue_data.get("user") or {}).get("login") if isinstance(issue_data.get("user"), dict) else None,
                 labels=labels,
                 created_at=_parse_timestamp(issue_data.get("created_at")),

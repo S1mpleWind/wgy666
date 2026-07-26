@@ -285,6 +285,7 @@ class ProjectAnalysisService:
                         ecosystem=ecosystem,
                         group=self._dependency_group(name, declared_group),
                         source_file=content.path,
+                        version=self._dependency_version(raw_name, name),
                     ),
                 )
 
@@ -335,7 +336,10 @@ class ProjectAnalysisService:
         for field, group in groups.items():
             values = payload.get(field)
             if isinstance(values, dict):
-                result.extend((str(name), "Node.js", group) for name in values)
+                result.extend(
+                    (f"{name}@{version}", "Node.js", group)
+                    for name, version in values.items()
+                )
         return result
 
     def _parse_pyproject(self, content: str) -> list[tuple[str, str, str]]:
@@ -377,8 +381,8 @@ class ProjectAnalysisService:
             dependencies = poetry.get("dependencies")
             if isinstance(dependencies, dict):
                 result.extend(
-                    (str(name), "Python", "runtime")
-                    for name in dependencies
+                    (f"{name}{version if isinstance(version, str) else ''}", "Python", "runtime")
+                    for name, version in dependencies.items()
                     if str(name).lower() != "python"  # Poetry 的 python 约束行不算依赖
                 )
             groups = poetry.get("group")
@@ -386,7 +390,10 @@ class ProjectAnalysisService:
                 for group_payload in groups.values():
                     values = group_payload.get("dependencies") if isinstance(group_payload, dict) else None
                     if isinstance(values, dict):
-                        result.extend((str(name), "Python", "development") for name in values)
+                        result.extend(
+                            (f"{name}{version if isinstance(version, str) else ''}", "Python", "development")
+                            for name, version in values.items()
+                        )
         return result
 
     def _parse_cargo_toml(self, content: str) -> list[tuple[str, str, str]]:
@@ -399,7 +406,10 @@ class ProjectAnalysisService:
         for field, group in (("dependencies", "runtime"), ("dev-dependencies", "development")):
             values = payload.get(field)
             if isinstance(values, dict):
-                result.extend((str(name), "Rust", group) for name in values)
+                result.extend(
+                    (f"{name}@{version if isinstance(version, str) else version.get('version', '') if isinstance(version, dict) else ''}", "Rust", group)
+                    for name, version in values.items()
+                )
         return result
 
     def _dependency_name(self, value: Any) -> str | None:
@@ -421,6 +431,16 @@ class ProjectAnalysisService:
             return None
         match = DEPENDENCY_NAME_RE.match(text)
         return match.group(0) if match else None
+
+    def _dependency_version(self, value: Any, name: str) -> str | None:
+        """Return the declared version range that follows a normalized package name."""
+        text = str(value).strip()
+        if not text.startswith(name):
+            return None
+        version = text[len(name):].strip()
+        if version.startswith("@"):
+            version = version[1:].strip()
+        return version or None
 
     def _dependency_group(self, name: str, declared_group: str) -> str:
         """根据包名和声明时的组别确定最终的依赖分组。
