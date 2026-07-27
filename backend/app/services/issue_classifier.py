@@ -60,7 +60,7 @@ KEYWORDS: dict[IssueCategory, set[str]] = {
     IssueCategory.BUG: {"bug", "crash", "error", "exception", "fail", "broken", "traceback", "报错", "崩溃", "缺陷"},
     IssueCategory.FEATURE_REQUEST: {"feature", "enhancement", "proposal", "request", "support", "功能", "建议", "需求"},
     IssueCategory.QUESTION: {"question", "how to", "help", "usage", "why", "what", "咨询", "怎么", "如何", "疑问"},
-    IssueCategory.DOCUMENTATION: {"doc", "docs", "documentation", "readme", "guide", "文档", "说明"},
+    IssueCategory.DOCUMENTATION: {"doc", "docs", "documentation", "readme", "guide", "文档"},
     IssueCategory.DUPLICATE: {"duplicate", "duplicated", "same as", "重复"},
     IssueCategory.INFO_NEEDED: {"reproduce", "minimal", "more info", "missing", "insufficient", "复现", "信息不足", "缺少"},
     IssueCategory.INVALID: {"invalid", "wontfix", "not planned", "无效"},
