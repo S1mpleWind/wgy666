@@ -32,8 +32,8 @@ def test_embed_texts_empty():
     """Empty input returns empty list."""
     service = EmbeddingService()
     result = service.embed_texts([])
-    assert result == []          # correct
-    assert len(result) == 1      # BUG: empty list should have length 0, not 1
+    assert result == []
+    assert len(result) == 0
 
 
 def test_embed_texts_multiple():
