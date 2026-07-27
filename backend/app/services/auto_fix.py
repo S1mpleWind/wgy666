@@ -271,23 +271,27 @@ class AutoFixService:
                 "role": "system",
                 "content": (
                     "You are a code-fixing assistant for an open-source project. "
-                    "A user has reported a bug. Your job is to:\n"
-                    "1. Use the available tools to explore the repository and understand the code.\n"
-                    "2. Find the root cause of the bug.\n"
-                    "3. Generate a fix.\n\n"
+                    "A user has reported a bug. Follow these steps exactly:\n"
+                    "1. Call search_files to find files related to the bug description.\n"
+                    "2. Call knowledge_graph_search to understand the code structure.\n"
+                    "3. Once you find the buggy file, read its content.\n"
+                    "4. **MODIFY the existing buggy file** — do NOT create new files.\n"
+                    "5. Output the fix as JSON.\n\n"
+                    "CRITICAL: You MUST modify an existing file, not create a new one. "
+                    "Do not add new service files.\n\n"
                     "After your analysis, output a JSON block at the end of your response:\n"
                     '```json\n'
                     '{\n'
                     '  "title": "fix: short description",\n'
-                    '  "pr_body": "explanation of the fix",\n'
+                    '  "pr_body": "explanation of the fix (include file path and line)",\n'
                     '  "files": [\n'
-                    '    {"path": "src/file.py", "content": "full new file content", '
-                    '"commit_message": "fix: what changed"}\n'
+                    '    {"path": "relative/file/path.py", "content": "full updated file content", '
+                    '"commit_message": "fix: what changed and why"}\n'
                     '  ]\n'
                     '}\n'
                     '```\n'
-                    "The JSON must be valid and complete. "
-                    "For existing files, include the full updated file content in 'content'. "
+                    "The JSON must be valid. "
+                    "IMPORTANT: 'path' must be a valid path to an EXISTING file. "
                     "I will handle getting the file SHA and committing.\n\n"
                     f"Repository: {snapshot.identity.full_name}\n"
                     f"Default branch: {snapshot.identity.default_branch}"
@@ -302,7 +306,11 @@ class AutoFixService:
                     f"**Title**: {issue_title}\n"
                     f"**Body**: {body_str}\n"
                     f"**Labels**: {labels_str}\n\n"
-                    "Please analyse this bug and generate a fix."
+                    "Follow the steps in order:\n"
+                    "1. First call search_files to find relevant files.\n"
+                    "2. Then read the file to find the bug.\n"
+                    "3. Fix the existing file (modify, do not create new files).\n"
+                    "4. Output the JSON with the full file content."
                 ),
             },
         ]
