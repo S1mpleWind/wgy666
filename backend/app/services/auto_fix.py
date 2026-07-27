@@ -270,7 +270,7 @@ class AutoFixService:
             {
                 "role": "system",
                 "content": (
-                    "You are a code-fixing assistant for an open-source project. "
+                    "The bug report title and body contain the file path — extract it first. "
                     "A user has reported a bug. Follow these steps exactly:\n"
                     "1. Call search_files to find files related to the bug description.\n"
                     "2. Call knowledge_graph_search to understand the code structure.\n"
@@ -325,24 +325,42 @@ class AutoFixService:
         json_match = re.search(r'```json\s*(\{.*?\})\s*```', final_text, re.DOTALL)
         if not json_match:
             # 策略 2（兜底）：在文本中查找任何包含 "files" 字段的 JSON 对象
-            # 用于处理 LLM 未正确使用 markdown 代码块的情况
             json_match = re.search(r'(\{.*?"files"\s*:.*?\})', final_text, re.DOTALL)
         if not json_match:
-            # 无法解析 JSON，将原始响应截取前 500 字符放入 pr_body 用于人工审核
+            # 重试：告诉 LLM 输出格式不对，让它只输出 JSON
+            messages.append({"role": "user", "content": "Your previous response did not contain valid JSON. Output ONLY the JSON block with the fix. No analysis text."})
+            final_text, _ = await harness.run(messages, snapshot)
+            if final_text:
+                json_match = re.search(r'```json\s*(\{.*?\})\s*```', final_text, re.DOTALL)
+                if not json_match:
+                    json_match = re.search(r'(\{.*?"files"\s*:.*?\})', final_text, re.DOTALL)
+
+        if not json_match:
             return FixProposal(
                 branch_name=branch_name, title="",
-                pr_body=final_text[:500],
+                pr_body="Could not parse LLM fix output. The bug report may be too vague.",
                 files=[],
             )
 
         try:
             data = json.loads(json_match.group(1))
         except json.JSONDecodeError:
-            return FixProposal(
-                branch_name=branch_name, title="",
-                pr_body="Failed to parse fix output.",
-                files=[],
-            )
+            # 重试：JSON 解析失败，再给一次机会
+            messages.append({"role": "user", "content": "The JSON you provided was malformed. Output a valid JSON block only."})
+            final_text, _ = await harness.run(messages, snapshot)
+            if final_text:
+                retry_match = re.search(r'```json\s*(\{.*?\})\s*```', final_text, re.DOTALL)
+                if not retry_match:
+                    retry_match = re.search(r'(\{.*?"files"\s*:.*?\})', final_text, re.DOTALL)
+                if retry_match:
+                    try:
+                        data = json.loads(retry_match.group(1))
+                    except json.JSONDecodeError:
+                        return FixProposal(branch_name=branch_name, title="", pr_body="Failed to parse fix JSON after retry.", files=[])
+                else:
+                    return FixProposal(branch_name=branch_name, title="", pr_body="Failed to parse fix JSON after retry.", files=[])
+            else:
+                return FixProposal(branch_name=branch_name, title="", pr_body="LLM returned empty response on retry.", files=[])
 
         files_raw = data.get("files", [])
         if not files_raw:
