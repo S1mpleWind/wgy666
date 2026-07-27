@@ -271,6 +271,7 @@ class AutoFixService:
                 "role": "system",
                 "content": (
                     "The bug report title and body contain the file path — extract it first. "
+                    "Search for the exact assertion or line in the bug report. Fix only that line. "
                     "A user has reported a bug. Follow these steps exactly:\n"
                     "1. Call search_files to find files related to the bug description.\n"
                     "2. Call knowledge_graph_search to understand the code structure.\n"
