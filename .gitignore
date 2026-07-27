@@ -45,6 +45,15 @@ backend/data/issuescope.db
 # Generated UML documentation
 docs/uml/
 
+# Personal assignments and test artifacts
+docs/TestReport*.md
+docs/可扩展性架构视图设计.md
+docs/deployment-diagram.puml
+docs/extensibility-architecture.puml
+backend/tests/test_issue_classifier_mock.py
+htmlcov/
+
+
 
 # TechPrototype - LaTeX build artifacts
 TechPrototype/vision_doc/*.aux
