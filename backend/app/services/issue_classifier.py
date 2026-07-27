@@ -192,18 +192,13 @@ class IssueClassifier:
         body: str | None,
         labels: list[str],
     ) -> IssueClassification:
-        """Use rules first and call the LLM only for uncertain results."""
-        rule_result = self.classify(title, body, labels)
-        uncertain = (
-            rule_result.category == IssueCategory.UNKNOWN
-            or rule_result.confidence <= _LLM_THRESHOLD
-        )
-        if self._llm_available and uncertain:
+        """LLM first, fall back to rules when LLM is unavailable."""
+        if self._llm_available:
             llm_result = await self._llm_classify(title, body, labels)
             if llm_result is not None:
                 return llm_result
 
-        return rule_result
+        return self.classify(title, body, labels)
 
     async def _llm_classify(
         self,
