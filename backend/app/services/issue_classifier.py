@@ -61,7 +61,7 @@ KEYWORDS: dict[IssueCategory, set[str]] = {
     IssueCategory.BUG: {"bug", "crash", "error", "exception", "fail", "broken", "traceback", "报错", "崩溃", "缺陷"},
     IssueCategory.FEATURE_REQUEST: {"feature", "enhancement", "proposal", "request", "support", "功能", "建议", "需求"},
     IssueCategory.QUESTION: {"question", "how to", "help", "usage", "why", "what", "咨询", "怎么", "如何", "疑问"},
-    IssueCategory.DOCUMENTATION: {"doc", "docs", "documentation", "readme", "guide", "文档", "说明"},
+    IssueCategory.DOCUMENTATION: {"doc", "docs", "documentation", "readme", "guide", "文档"},
     IssueCategory.DUPLICATE: {"duplicate", "duplicated", "same as", "重复"},
     IssueCategory.INFO_NEEDED: {"reproduce", "minimal", "more info", "missing", "insufficient", "复现", "信息不足", "缺少"},
     IssueCategory.INVALID: {"invalid", "wontfix", "not planned", "无效"},
@@ -194,18 +194,13 @@ class IssueClassifier:
         body: str | None,
         labels: list[str],
     ) -> IssueClassification:
-        """Use rules first and call the LLM only for uncertain results."""
-        rule_result = self.classify(title, body, labels)
-        uncertain = (
-            rule_result.category == IssueCategory.UNKNOWN
-            or rule_result.confidence <= _LLM_THRESHOLD
-        )
-        if self._llm_available and uncertain:
+        """LLM first, fall back to rules when LLM is unavailable."""
+        if self._llm_available:
             llm_result = await self._llm_classify(title, body, labels)
             if llm_result is not None:
                 return llm_result
 
-        return rule_result
+        return self.classify(title, body, labels)
 
     async def _llm_classify(
         self,

@@ -1377,6 +1377,10 @@
 }
 
 .graph-toolbar-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   min-height: 32px;
   padding: 0 9px;
   border: 1px solid #d3dee8;
@@ -1415,6 +1419,7 @@
 }
 
 .architecture-flow-node {
+  position: relative;
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr);
   gap: 10px;
@@ -1429,6 +1434,7 @@
   background: #ffffff;
   box-shadow: 0 7px 18px rgba(25, 45, 65, 0.08);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  cursor: pointer;
 }
 
 .architecture-flow-node:hover {
@@ -1436,9 +1442,19 @@
   transform: translateY(-1px);
 }
 
-.architecture-flow-node.selected {
+.architecture-flow-node.is-active {
   border-color: #2368d9;
   box-shadow: 0 0 0 3px rgba(35, 104, 217, 0.14), 0 10px 24px rgba(25, 45, 65, 0.12);
+}
+
+.architecture-flow-node.is-related {
+  border-color: #86a9cf;
+  box-shadow: 0 8px 22px rgba(35, 104, 217, 0.12);
+}
+
+.architecture-flow-node.is-muted {
+  opacity: 0.3;
+  filter: saturate(0.65);
 }
 
 .architecture-flow-node.repository {
@@ -1475,6 +1491,33 @@
   min-width: 0;
   display: grid;
   gap: 2px;
+}
+
+.architecture-flow-node.source .architecture-node-copy,
+.architecture-flow-node.dependency .architecture-node-copy,
+.architecture-flow-node.quality .architecture-node-copy {
+  padding-right: 18px;
+}
+
+.architecture-node-toggle {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #c8ded3;
+  border-radius: 5px;
+  color: #14845a;
+  background: #ffffff;
+}
+
+.architecture-node-toggle:hover {
+  border-color: #7eb79d;
+  background: #e9f6ef;
 }
 
 .architecture-node-copy small,
@@ -1517,6 +1560,34 @@
   min-width: 0;
   padding: 20px 18px;
   background: #ffffff;
+}
+
+.graph-inspector-path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  margin-bottom: 15px;
+}
+
+.graph-inspector-path span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: #5c6f82;
+  background: #f0f4f8;
+  font-size: 9px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.graph-inspector-path span + span::before {
+  margin-right: 4px;
+  color: #9aa8b5;
+  content: '/';
 }
 
 .graph-inspector-icon {
@@ -1573,7 +1644,11 @@
   overflow-wrap: anywhere;
 }
 
-.graph-inspector button {
+.graph-inspector-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
   min-height: 36px;
   margin-top: auto;
@@ -1584,9 +1659,173 @@
   font-size: 11px;
 }
 
-.graph-inspector button:hover {
+.graph-inspector-action:hover {
   border-color: #8fb1d8;
   background: #e4efff;
+}
+
+.graph-related-files {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-top: 18px;
+  padding-top: 15px;
+  border-top: 1px solid #e5ebf1;
+}
+
+.graph-related-files > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #536679;
+}
+
+.graph-related-files > div strong {
+  font-size: 11px;
+}
+
+.graph-related-files button {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr) 13px;
+  gap: 7px;
+  align-items: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #526476;
+  background: #f6f8fa;
+  text-align: left;
+}
+
+.graph-related-files button:hover {
+  border-color: #b9cde3;
+  color: #2368d9;
+  background: #eef5ff;
+}
+
+.graph-related-files button span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-code-overlay {
+  position: fixed;
+  z-index: 1400;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(18, 31, 44, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.graph-code-viewer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid #ccd8e3;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 30px 80px rgba(13, 27, 40, 0.28);
+}
+
+.graph-code-viewer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px 17px;
+  border-bottom: 1px solid #dce4ec;
+  background: #f8fafc;
+}
+
+.graph-code-viewer > header div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.graph-code-viewer > header span {
+  color: #748392;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.graph-code-viewer > header strong {
+  overflow: hidden;
+  color: #1b2732;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-code-viewer > header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d5dfe8;
+  border-radius: 6px;
+  color: #526476;
+  background: #ffffff;
+}
+
+.graph-code-body {
+  min-height: 320px;
+  overflow: auto;
+  background: #17212b;
+}
+
+.graph-code-body pre {
+  min-width: max-content;
+  margin: 0;
+  padding: 20px;
+  color: #dbe7f1;
+  font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  tab-size: 2;
+}
+
+.graph-code-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 320px;
+  color: #cfdae4;
+  font-size: 12px;
+}
+
+.graph-code-status.error {
+  color: #ffb8b8;
+}
+
+.graph-code-status .spin {
+  animation: graph-spin 0.8s linear infinite;
+}
+
+.graph-code-viewer > footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 17px;
+  border-top: 1px solid #dce4ec;
+  color: #6c7b89;
+  background: #f8fafc;
+  font-size: 10px;
+}
+
+@keyframes graph-spin {
+  to { transform: rotate(360deg); }
 }
 
 .repository-flow-canvas .react-flow__controls,
@@ -1647,7 +1886,7 @@
     min-height: 190px;
   }
 
-  .graph-inspector button {
+  .graph-inspector-action {
     width: auto;
     margin-top: 16px;
   }
@@ -1665,7 +1904,11 @@
 
   .graph-toolbar-actions {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
+  }
+
+  .graph-toolbar-actions > span {
+    width: 100%;
   }
 
   .repository-flow-canvas {
@@ -1682,5 +1925,14 @@
 
   .repository-graph-shell.expanded .graph-inspector {
     display: none;
+  }
+
+  .graph-code-overlay {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .graph-code-viewer {
+    max-height: none;
   }
 }

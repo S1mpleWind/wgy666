@@ -128,6 +128,7 @@ class RepositorySnapshot(BaseModel):
     issue_categories: list[CategorySummary] = Field(default_factory=list)
     pull_requests: list[PullRequestSummary] = Field(default_factory=list)
     recent_commits: list[CommitSummary] = Field(default_factory=list)
+    source_revision: str | None = None
     synced_at: datetime
 
 

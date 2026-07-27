@@ -31,7 +31,9 @@ def test_hash_embedding_unit_vector():
 def test_embed_texts_empty():
     """Empty input returns empty list."""
     service = EmbeddingService()
-    assert service.embed_texts([]) == []
+    result = service.embed_texts([])
+    assert result == []          # correct
+    assert len(result) == 1      # BUG: empty list should have length 0, not 1
 
 
 def test_embed_texts_multiple():

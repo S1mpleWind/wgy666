@@ -108,6 +108,7 @@ class RepositorySyncService:
 
         # -- File classification + source content from git clone --------------
         async with GitCloneService(clone_url, token=get_effective_config().github_token) as git_clone:
+            source_revision = await asyncio.to_thread(git_clone.head_revision)
             # Channel A: random sample for accurate category statistics
             tree = await asyncio.to_thread(
                 git_clone.walk_files, request.max_tree_items,
@@ -160,6 +161,7 @@ class RepositorySyncService:
             issue_categories=issue_categories,
             pull_requests=[self._map_pull_request(pull) for pull in pulls],
             recent_commits=[self._map_commit(commit) for commit in commits],
+            source_revision=source_revision,
             synced_at=datetime.now(timezone.utc),
         )
 

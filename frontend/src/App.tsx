@@ -28,6 +28,7 @@ import { ProjectAnalysisPanel } from './components/ProjectAnalysisPanel'
 import { LoginPage } from './components/LoginPage'
 import { UserManagement } from './components/UserManagement'
 import { useAuth } from './contexts/AuthContext'
+import './WorkspaceTheme.css'
 
 /**
  * App — Single-page sync-and-dashboard application.
@@ -235,6 +236,34 @@ function App() {
     if (analysisSection) window.scrollTo({ top: 0, behavior: 'auto' })
   }, [analysisSection])
 
+  useEffect(() => {
+    if (!snapshot) {
+      setProjectAnalysis(null)
+      return
+    }
+
+    let cancelled = false
+    const fallback = analyzeProject(snapshot)
+    setProjectAnalysis(fallback)
+
+    fetchProjectStructure(snapshot.identity.owner, snapshot.identity.name)
+      .then((response) => {
+        if (!cancelled) setProjectAnalysis(mapProjectAnalysis(response))
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProjectAnalysis({
+            ...fallback,
+            analysisWarning: fallback.analysisWarning ?? '后端项目解析暂不可用，当前显示本地降级结果。',
+          })
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [snapshot])
+
   function handleWorkspaceNavigation(section: WorkspaceSection) {
     setActiveWorkspaceSection(section)
 
@@ -286,7 +315,11 @@ function App() {
   }
 
   return (
-    <main className="workspace">
+    <main
+      className="workspace workspace-blueprint"
+      data-section={activeWorkspaceSection}
+      data-syncing={isLoading ? 'true' : 'false'}
+    >
       {/* -- Sidebar: sync form + module info ------------------------------- */}
       <aside className="sidebar">
         <div className="brand">
@@ -367,14 +400,26 @@ function App() {
         </nav>
 
         <div className="sidebar-actions">
-          <button className="ghost-button sidebar-action" onClick={() => setShowInbox(!showInbox)}>
+          <button
+            className={`ghost-button sidebar-action ${showInbox ? 'active' : ''}`}
+            onClick={() => {
+              setShowSettings(false)
+              setShowInbox(!showInbox)
+            }}
+          >
             <span className="bell-wrapper">
               <Bell size={16} aria-hidden="true" />
               {webhookEvents.some(event => !event.is_read) && <span className="badge-dot" />}
             </span>
             通知
           </button>
-          <button className="ghost-button sidebar-action" onClick={() => setShowSettings(!showSettings)}>
+          <button
+            className={`ghost-button sidebar-action ${showSettings ? 'active' : ''}`}
+            onClick={() => {
+              setShowInbox(false)
+              setShowSettings(!showSettings)
+            }}
+          >
             <Settings2 size={16} aria-hidden="true" />
             配置
           </button>
@@ -412,8 +457,7 @@ function App() {
 
         {/* Modal overlays */}
         {showInbox && (
-          <div className="modal-overlay" onClick={() => setShowInbox(false)}>
-            <section className="modal inbox-panel" onClick={(e) => e.stopPropagation()}>
+            <section className="utility-drawer inbox-panel">
               <div className="modal-header">
                 <h3>通知</h3>
                 <button className="icon-button" onClick={() => setShowInbox(false)}>&#x2715;</button>
@@ -456,12 +500,10 @@ function App() {
                 </div>
               )}
             </section>
-          </div>
         )}
 
         {showSettings && (
-          <div className="modal-overlay" onClick={() => setShowSettings(false)}>
-            <section className="modal settings-panel" onClick={(e) => e.stopPropagation()}>
+            <section className="utility-drawer settings-panel">
               <div className="modal-header">
                 <h3>Webhook 配置</h3>
                 <button className="icon-button" onClick={() => setShowSettings(false)}>&#x2715;</button>
@@ -478,7 +520,6 @@ function App() {
                 在 GitHub 仓库 Settings → Webhooks 中填入以上 URL，并使用服务器环境变量中配置的同一 Secret。
               </p>
             </section>
-          </div>
         )}
 
         {/* Issue detail modal */}
@@ -557,7 +598,7 @@ function App() {
                 onSelect={setAnalysisSection}
               />
             ) : (
-              <>
+              <div className="dashboard-canvas">
             {/* Repository header */}
             <header className="repo-header" id="overview">
               <div className="repo-identity">
@@ -567,7 +608,7 @@ function App() {
                   <span className="repo-visibility"><ShieldCheck size={13} />已建立安全上下文</span>
                   <span>同步于 {formatDate(snapshot.synced_at)}</span>
                 </div>
-                <h2>{snapshot.identity.full_name}</h2>
+                <h2 title={snapshot.identity.full_name}>{snapshot.identity.full_name}</h2>
                 <p className="description">{snapshot.description ?? 'No repository description.'}</p>
                 <div className="topic-row">
                   {snapshot.topics.slice(0, 8).map((topic) => (
@@ -664,7 +705,7 @@ function App() {
               owner={snapshot.identity.owner}
               name={snapshot.identity.name}
             />
-              </>
+              </div>
             )}
           </>
         )}

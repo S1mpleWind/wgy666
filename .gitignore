@@ -56,3 +56,6 @@ TechPrototype/vision_doc/docx_temp/
 TechPrototype/code/backend/.env
 
 
+
+# Logs
+logs/

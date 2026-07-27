@@ -8,10 +8,13 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.engine import Engine
 
+from app.schemas.architecture import ArchitectureAnalysis, ArchitectureHistoryItem
 from app.schemas.repository import RepositoryListItem, RepositorySnapshot
+from app.services.architecture_analysis import ArchitectureAnalysisService
 from app.services.embeddings import EmbeddingService
 from app.services.knowledge_graph import KnowledgeGraphService
 from app.storage.database import (
+    architecture_analyses,
     commits,
     create_database_engine,
     initialize_database,
@@ -68,6 +71,7 @@ class PostgresRepositoryStore:
             self._replace_pull_requests(connection, repository_id, snapshot)
             self._replace_commits(connection, repository_id, snapshot)
             self._replace_knowledge_graph(connection, repository_id, snapshot)
+            self._record_architecture_analysis(connection, repository_id, snapshot)
             self._record_sync_run(connection, repository_id, snapshot)
 
     def get(self, owner: str, name: str) -> RepositorySnapshot | None:
@@ -231,6 +235,85 @@ class PostgresRepositoryStore:
         """Return the content of a single file by path."""
         results = self.get_file_contents(owner, name, path)
         return results[0] if results else None
+
+    def save_architecture_analysis(
+        self,
+        snapshot: RepositorySnapshot,
+        analysis: ArchitectureAnalysis | None = None,
+    ) -> ArchitectureAnalysis:
+        result = analysis or ArchitectureAnalysisService().analyze(snapshot)
+        with self.engine.begin() as connection:
+            repository_id = self._upsert_repository(connection, snapshot)
+            existing = connection.execute(
+                select(architecture_analyses.c.id).where(
+                    architecture_analyses.c.repository_id == repository_id,
+                    architecture_analyses.c.revision == result.revision,
+                )
+            ).first()
+            if existing is None:
+                connection.execute(insert(architecture_analyses).values(
+                    repository_id=repository_id,
+                    revision=result.revision,
+                    analysis=result.model_dump(mode="json"),
+                    generated_at=result.generated_at,
+                ))
+            else:
+                connection.execute(
+                    update(architecture_analyses)
+                    .where(architecture_analyses.c.id == existing.id)
+                    .values(
+                        analysis=result.model_dump(mode="json"),
+                        generated_at=result.generated_at,
+                    )
+                )
+        return result
+
+    def get_architecture_analysis(
+        self,
+        owner: str,
+        name: str,
+        revision: str | None = None,
+    ) -> ArchitectureAnalysis | None:
+        statement = (
+            select(architecture_analyses.c.analysis)
+            .select_from(architecture_analyses.join(
+                repositories,
+                architecture_analyses.c.repository_id == repositories.c.id,
+            ))
+            .where(repositories.c.owner == owner, repositories.c.name == name)
+        )
+        if revision:
+            statement = statement.where(architecture_analyses.c.revision == revision)
+        else:
+            statement = statement.order_by(architecture_analyses.c.generated_at.desc()).limit(1)
+        with self.engine.connect() as connection:
+            row = connection.execute(statement).first()
+        return ArchitectureAnalysis.model_validate(row.analysis) if row else None
+
+    def list_architecture_analyses(self, owner: str, name: str) -> list[ArchitectureHistoryItem]:
+        statement = (
+            select(architecture_analyses.c.analysis)
+            .select_from(architecture_analyses.join(
+                repositories,
+                architecture_analyses.c.repository_id == repositories.c.id,
+            ))
+            .where(repositories.c.owner == owner, repositories.c.name == name)
+            .order_by(architecture_analyses.c.generated_at.desc())
+            .limit(20)
+        )
+        with self.engine.connect() as connection:
+            rows = connection.execute(statement).all()
+        return [
+            ArchitectureHistoryItem(
+                revision=item.revision,
+                generated_at=item.generated_at,
+                symbol_count=len(item.symbols),
+                relation_count=len(item.relations),
+                route_count=len(item.routes),
+                health_score=item.health.score,
+            )
+            for item in (ArchitectureAnalysis.model_validate(row.analysis) for row in rows)
+        ]
 
     def _replace_issues(self, connection, repository_id: int, snapshot: RepositorySnapshot) -> None:
         connection.execute(delete(issues).where(issues.c.repository_id == repository_id))
@@ -453,3 +536,36 @@ class PostgresRepositoryStore:
                 },
             )
         )
+
+    def _record_architecture_analysis(self, connection, repository_id: int, snapshot: RepositorySnapshot) -> None:
+        revision = ArchitectureAnalysisService.revision_for(snapshot)
+        existing = connection.execute(
+            select(architecture_analyses.c.id, architecture_analyses.c.analysis).where(
+                architecture_analyses.c.repository_id == repository_id,
+                architecture_analyses.c.revision == revision,
+            )
+        ).first()
+        if existing is not None:
+            stored = ArchitectureAnalysis.model_validate(existing.analysis)
+            if (
+                stored.coverage.indexed_files == len(snapshot.source_contents)
+                and stored.parser_version == ArchitectureAnalysisService.parser_version
+            ):
+                return
+        analysis = ArchitectureAnalysisService().analyze(snapshot)
+        values = {
+            "analysis": analysis.model_dump(mode="json"),
+            "generated_at": analysis.generated_at,
+        }
+        if existing is None:
+            connection.execute(insert(architecture_analyses).values(
+                repository_id=repository_id,
+                revision=analysis.revision,
+                **values,
+            ))
+        else:
+            connection.execute(
+                update(architecture_analyses)
+                .where(architecture_analyses.c.id == existing.id)
+                .values(**values)
+            )

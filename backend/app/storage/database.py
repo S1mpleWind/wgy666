@@ -149,6 +149,17 @@ sync_runs = Table(
     Column("summary", JSON, nullable=False, default=dict),
 )
 
+architecture_analyses = Table(
+    "architecture_analyses",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("repository_id", ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False),
+    Column("revision", String(128), nullable=False),
+    Column("analysis", JSON, nullable=False),
+    Column("generated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("repository_id", "revision", name="uq_architecture_analysis_repo_revision"),
+)
+
 webhook_events = Table(
     "webhook_events",
     metadata,

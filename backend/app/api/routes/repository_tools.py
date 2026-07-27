@@ -1,11 +1,21 @@
 """Repository query tool endpoints for assistant and UI debugging."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query
 
+from app.schemas.architecture import (
+    ArchitectureAnalysis,
+    ArchitectureDiff,
+    ArchitectureHistoryItem,
+    ImpactAnalysis,
+    ImpactAnalysisRequest,
+)
 from app.schemas.assistant import FreshnessMode
 from app.schemas.project_analysis import ProjectAnalysis
 from app.schemas.repository_tools import FileSearchResult, IssueSearchResult, RepositoryOverview
 from app.services.github_client import GitHubClientError
+from app.services.architecture_analysis import ArchitectureAnalysisService
 from app.services.project_analysis import ProjectAnalysisService
 from app.services.repository_query import RepositoryQueryService
 from app.storage import repository_store
@@ -118,6 +128,83 @@ async def get_file_content(
             detail=f"File '{path}' not found in repository {owner}/{name}. Sync it first.",
         )
     return content
+
+
+@router.get("/architecture", response_model=ArchitectureAnalysis)
+async def get_architecture_analysis(
+    owner: str,
+    name: str,
+    revision: str | None = None,
+) -> ArchitectureAnalysis:
+    """Return a persisted semantic architecture analysis for one revision."""
+    snapshot, _ = await _get_snapshot(owner, name, FreshnessMode.CACHE_FIRST)
+    current_revision = ArchitectureAnalysisService.revision_for(snapshot)
+    stored = repository_store.get_architecture_analysis(owner, name, revision)
+    if stored is not None and (
+        stored.revision != current_revision
+        or stored.parser_version == ArchitectureAnalysisService.parser_version
+    ):
+        return stored
+    if revision and revision != current_revision:
+        raise HTTPException(status_code=404, detail="Architecture revision was not found.")
+    analysis = await asyncio.to_thread(ArchitectureAnalysisService().analyze, snapshot)
+    return await asyncio.to_thread(repository_store.save_architecture_analysis, snapshot, analysis)
+
+
+@router.post("/architecture/impact", response_model=ImpactAnalysis)
+async def analyze_architecture_impact(
+    owner: str,
+    name: str,
+    payload: ImpactAnalysisRequest,
+) -> ImpactAnalysis:
+    """Trace affected files, symbols, routes, and tests from paths or issue text."""
+    snapshot, _ = await _get_snapshot(owner, name, FreshnessMode.CACHE_FIRST)
+    analysis = repository_store.get_architecture_analysis(owner, name)
+    current_revision = ArchitectureAnalysisService.revision_for(snapshot)
+    if (
+        analysis is None
+        or (
+            analysis.revision == current_revision
+            and analysis.parser_version != ArchitectureAnalysisService.parser_version
+        )
+    ):
+        generated = await asyncio.to_thread(ArchitectureAnalysisService().analyze, snapshot)
+        analysis = await asyncio.to_thread(
+            repository_store.save_architecture_analysis,
+            snapshot,
+            generated,
+        )
+    return await asyncio.to_thread(ArchitectureAnalysisService().impact, analysis, payload)
+
+
+@router.get("/architecture/history", response_model=list[ArchitectureHistoryItem])
+async def list_architecture_history(owner: str, name: str) -> list[ArchitectureHistoryItem]:
+    """List up to twenty architecture snapshots, newest first."""
+    snapshot, _ = await _get_snapshot(owner, name, FreshnessMode.CACHE_FIRST)
+    current = repository_store.get_architecture_analysis(owner, name)
+    if current is None or (
+        current.revision == ArchitectureAnalysisService.revision_for(snapshot)
+        and current.parser_version != ArchitectureAnalysisService.parser_version
+    ):
+        await asyncio.to_thread(repository_store.save_architecture_analysis, snapshot)
+    history = repository_store.list_architecture_analyses(owner, name)
+    return history
+
+
+@router.get("/architecture/diff", response_model=ArchitectureDiff)
+async def compare_architecture_revisions(
+    owner: str,
+    name: str,
+    base_revision: str,
+    target_revision: str,
+) -> ArchitectureDiff:
+    """Compare symbols, routes, dependencies, and health between revisions."""
+    await _get_snapshot(owner, name, FreshnessMode.CACHE_FIRST)
+    base = repository_store.get_architecture_analysis(owner, name, base_revision)
+    target = repository_store.get_architecture_analysis(owner, name, target_revision)
+    if base is None or target is None:
+        raise HTTPException(status_code=404, detail="One or both architecture revisions were not found.")
+    return await asyncio.to_thread(ArchitectureAnalysisService().diff, base, target)
 
 
 async def _get_snapshot(owner: str, name: str, freshness: FreshnessMode):

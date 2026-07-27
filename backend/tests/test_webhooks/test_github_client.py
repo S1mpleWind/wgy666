@@ -155,6 +155,54 @@ class TestGitHubClientInternals:
         assert captured_data["message"] == "Create new.txt"
         assert "sha" not in captured_data
 
+    def test_create_branch_builds_correct_path_and_body(self):
+        """create_branch sends POST with correct ref and sha."""
+        import asyncio
+
+        client = GitHubClient()
+        ref = RepositoryRef(owner="test-o", name="test-r")
+        captured = {}
+
+        async def fake_post(path, json_data=None):
+            captured.update({"path": path, **(json_data or {})})
+            return {"ref": "refs/heads/fix-42", "sha": "abc123"}
+
+        client._post = fake_post  # type: ignore[method-assign]
+
+        asyncio.run(
+            client.create_branch(ref, branch_name="fix-42", sha="abc123")
+        )
+
+        assert "test-o/test-r/git/refs" in captured["path"]
+        assert captured["ref"] == "refs/heads/fix-42"
+        assert captured["sha"] == "abc123"
+
+    def test_create_pull_request_builds_correct_path_and_body(self):
+        """create_pull_request sends POST with title, head, base, body."""
+        import asyncio
+
+        client = GitHubClient()
+        ref = RepositoryRef(owner="o", name="r")
+        captured = {}
+
+        async def fake_post(path, json_data=None):
+            captured.update({"path": path, **(json_data or {})})
+            return {"html_url": "https://github.com/o/r/pull/1"}
+
+        client._post = fake_post  # type: ignore[method-assign]
+
+        asyncio.run(
+            client.create_pull_request(
+                ref, title="fix: crash", head="fix-bug", base="main", body="Closes #1",
+            )
+        )
+
+        assert "o/r/pulls" in captured["path"]
+        assert captured["title"] == "fix: crash"
+        assert captured["head"] == "fix-bug"
+        assert captured["base"] == "main"
+        assert captured["body"] == "Closes #1"
+
     def test_get_issues_paginates_past_pull_requests(self):
         """PR entries do not reduce the requested number of real issues."""
         import asyncio
