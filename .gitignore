@@ -51,6 +51,7 @@ docs/可扩展性架构视图设计.md
 docs/deployment-diagram.puml
 docs/extensibility-architecture.puml
 backend/tests/test_issue_classifier_mock.py
+.coverage
 htmlcov/
 
 
