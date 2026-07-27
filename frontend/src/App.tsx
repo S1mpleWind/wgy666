@@ -146,7 +146,7 @@ function App() {
     const poll = setInterval(pollAndRefresh, 30000)
     pollAndRefresh()
     return () => clearInterval(poll)
-  }, [repoName, snapshot])
+  }, [repoName])
 
   // -- Load synced repo list on mount + auto-select last one ----------------
 
