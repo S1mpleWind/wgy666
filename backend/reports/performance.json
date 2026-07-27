@@ -1,0 +1,7 @@
+{
+  "operation": "IssueClassifier.classify",
+  "iterations": 1000,
+  "elapsed_seconds": 0.007669,
+  "elapsed_milliseconds": 7.669,
+  "average_microseconds": 7.669
+}
