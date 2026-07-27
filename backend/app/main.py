@@ -10,7 +10,11 @@ from app.api.routes.faq import router as faq_router
 from app.webhooks.router import router as webhooks_router
 
 
+from app.core.logging import setup_logging
+
+
 def create_app() -> FastAPI:
+    setup_logging()
     """Build the FastAPI application with middleware and route registration.
 
     Router prefix convention:
