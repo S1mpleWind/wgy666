@@ -52,6 +52,7 @@ repositories = Table(
     Column("size_kb", Integer, nullable=False, default=0),
     Column("languages", JSON, nullable=False, default=dict),
     Column("topics", JSON, nullable=False, default=list),
+    Column("synced_by_user_id", String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
     Column("synced_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("owner", "name", name="uq_repositories_owner_name"),
 )
@@ -242,6 +243,34 @@ knowledge_chunks = Table(
     UniqueConstraint("repository_id", "chunk_key", name="uq_knowledge_chunks_repo_key"),
 )
 
+# -- Users & Authentication -------------------------------------------------
+
+users = Table(
+    "users",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("name", String(100), nullable=False),
+    Column("email", String(320), nullable=False, unique=True),
+    Column("password_hash", String(256), nullable=False),
+    Column("role", String(16), nullable=False, default="user"),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+user_configs = Table(
+    "user_configs",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("user_id", String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True),
+    Column("llm_api_base_url", String(2048)),
+    Column("llm_model", String(255)),
+    Column("llm_api_key", Text),
+    Column("github_token", Text),
+    Column("github_webhook_secret", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 
 def create_database_engine() -> Engine:
     if not settings.database_url:
@@ -283,6 +312,26 @@ def initialize_database(engine: Engine) -> None:
                 "CREATE INDEX IF NOT EXISTS ix_knowledge_chunks_embedding "
                 "ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops)"
             ))
+            connection.execute(text(
+                "ALTER TABLE repositories ADD COLUMN IF NOT EXISTS "
+                "synced_by_user_id VARCHAR(36)"
+            ))
+            connection.execute(text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                "role VARCHAR(16) DEFAULT 'user'"
+            ))
         else:
             # SQLite or other dialects — create tables without vector extensions.
             metadata.create_all(connection)
+            try:
+                connection.execute(text(
+                    "ALTER TABLE repositories ADD COLUMN synced_by_user_id VARCHAR(36)"
+                ))
+            except Exception:
+                pass  # column already exists
+            try:
+                connection.execute(text(
+                    "ALTER TABLE users ADD COLUMN role VARCHAR(16) DEFAULT 'user'"
+                ))
+            except Exception:
+                pass  # column already exists

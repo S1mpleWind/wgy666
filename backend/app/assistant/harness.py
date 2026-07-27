@@ -15,6 +15,7 @@ from openai import APIError, AsyncOpenAI, BadRequestError, OpenAIError
 from app.assistant.tool_registry import RepositoryToolRegistry
 from app.assistant.tools import ToolResult, merge_citations
 from app.core.config import settings
+from app.core.effective_config import get_effective_config
 from app.schemas.assistant import AssistantChatRequest, AssistantChatResponse
 from app.schemas.repository import RepositorySnapshot
 from app.services.repository_query import RepositoryQueryService
@@ -38,18 +39,19 @@ class AgentHarness:
     """
 
     def __init__(self) -> None:
+        self._cfg = get_effective_config()
         self.query = RepositoryQueryService()
         self.registry = RepositoryToolRegistry()
         self.client = AsyncOpenAI(
-            api_key=settings.llm_api_key or "missing-key",
-            base_url=settings.llm_api_base_url,
+            api_key=self._cfg.llm_api_key or "missing-key",
+            base_url=self._cfg.llm_api_base_url,
         )
 
     # ── Public API ───────────────────────────────────────────────────
 
     async def answer(self, request: AssistantChatRequest) -> AssistantChatResponse:
         """Interactive Q&A — builds context from request, returns structured response."""
-        if not settings.llm_api_key:
+        if not self._cfg.llm_api_key:
             raise AgentHarnessError("LLM_API_KEY is not configured.", status_code=503)
 
         snapshot, used_cached_data = await self.query.get_snapshot(
@@ -93,7 +95,7 @@ class AgentHarness:
             # ── Call LLM ─────────────────────────────────────────────
             try:
                 completion = await self.client.chat.completions.create(
-                    model=settings.llm_model,
+                    model=self._cfg.llm_model,
                     messages=messages,
                     tools=self.registry.openai_tools(),
                     tool_choice="auto",
@@ -143,7 +145,7 @@ class AgentHarness:
         # ── Final LLM call after tool rounds exhausted ───────────────
         try:
             final = await self.client.chat.completions.create(
-                model=settings.llm_model,
+                model=self._cfg.llm_model,
                 messages=messages,
             )
         except (APIError, OpenAIError) as exc:

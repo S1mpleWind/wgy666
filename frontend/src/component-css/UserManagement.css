@@ -66,6 +66,15 @@
 .user-list-state { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); color: var(--color-text-muted); font-size: 13px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
+.header-actions { display: flex; align-items: center; gap: 10px; }
+.current-user-badge { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; background: var(--color-surface-subtle, #f8fafc); border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--color-text); }
+.user-avatar-sm { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: #1856bd; background: #e9f1ff; font-weight: 750; font-size: 12px; }
+.admin-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 600; margin-left: 4px; }
+
+.role-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.role-badge.admin { background: #fef3c7; color: #92400e; }
+.role-badge.user { background: var(--color-surface-subtle, #f1f5f9); color: var(--color-text-muted, #64748b); }
+
 @media (max-width: 1240px) {
   .user-create-form { grid-template-columns: 1fr 1fr; }
   .user-form-title { grid-column: 1 / -1; }

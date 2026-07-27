@@ -25,7 +25,9 @@ import { FileBrowser } from './components/FileBrowser'
 import { ChatSidebar } from './components/ChatSidebar'
 import { IssueDetailModal, IssueOverviewModal, SyncedIssueModal } from './components/IssueModals'
 import { ProjectAnalysisPanel } from './components/ProjectAnalysisPanel'
+import { LoginPage } from './components/LoginPage'
 import { UserManagement } from './components/UserManagement'
+import { useAuth } from './contexts/AuthContext'
 
 /**
  * App — Single-page sync-and-dashboard application.
@@ -42,6 +44,8 @@ const defaultForm = {
 type WorkspaceSection = 'overview' | 'analysis' | 'issues' | 'agent' | 'faq' | 'users'
 
 function App() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+
   const [form, setForm] = useState(defaultForm)
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null)
   const [repoList, setRepoList] = useState<RepositoryListItem[]>([])
@@ -266,6 +270,19 @@ function App() {
     window.requestAnimationFrame(() => {
       document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
+  }
+
+  // Auth gate: show login page when not authenticated
+  if (authLoading) {
+    return (
+      <main className="workspace" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <Loader2 className="spin" size={32} />
+      </main>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />
   }
 
   return (

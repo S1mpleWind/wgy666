@@ -51,6 +51,7 @@ import json
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.core.effective_config import get_effective_config
 from app.schemas.issue import IssueCategory, IssueClassification
 from app.schemas.repository import CategorySummary
 
@@ -179,11 +180,12 @@ class IssueClassifier:
 
     def __init__(self) -> None:
         """初始化 LLM 客户端（如果配置了 API Key）。"""
-        self._llm_available = bool(settings.llm_api_key)
+        self._cfg = get_effective_config()
+        self._llm_available = bool(self._cfg.llm_api_key)
         if self._llm_available:
             self._client = AsyncOpenAI(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_api_base_url,
+                api_key=self._cfg.llm_api_key,
+                base_url=self._cfg.llm_api_base_url,
             )
 
     async def async_classify(
@@ -249,7 +251,7 @@ class IssueClassifier:
 
         try:
             completion = await self._client.chat.completions.create(
-                model=settings.llm_model,
+                model=self._cfg.llm_model,
                 messages=[
                     {
                         "role": "system",

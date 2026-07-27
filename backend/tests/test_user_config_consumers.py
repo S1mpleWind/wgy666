@@ -1,32 +1,67 @@
-"""Verify runtime user configuration reaches its backend consumers."""
+"""Verify per-user effective config reaches backend consumers via ContextVar."""
 
 import pytest
 
-from app.api.routes.users import update_system_config
+from app.core.effective_config import EffectiveConfig, get_effective_config, set_effective_config
 from app.core.config import settings
-from app.schemas.user import SystemConfigUpdate
+
+
+class TestEffectiveConfig:
+    """Test the ContextVar-based effective config module directly."""
+
+    def test_default_falls_back_to_settings(self):
+        """With no context set, get_effective_config returns server defaults."""
+        cfg = get_effective_config()
+        assert cfg.llm_api_base_url == settings.llm_api_base_url
+        assert cfg.llm_model == settings.llm_model
+        assert cfg.llm_api_key == settings.llm_api_key
+        assert cfg.github_token == settings.github_token
+        assert cfg.github_webhook_secret == settings.github_webhook_secret
+
+    def test_set_and_get(self):
+        """Setting a config via ContextVar returns the custom values."""
+        custom = EffectiveConfig(
+            llm_api_base_url="https://custom.example.com/v1",
+            llm_model="custom-model",
+            llm_api_key="custom-key",
+            github_token="custom-token",
+            github_webhook_secret="custom-secret",
+        )
+        set_effective_config(custom)
+        cfg = get_effective_config()
+        assert cfg.llm_api_base_url == "https://custom.example.com/v1"
+        assert cfg.llm_model == "custom-model"
+        assert cfg.llm_api_key == "custom-key"
+        assert cfg.github_token == "custom-token"
+        assert cfg.github_webhook_secret == "custom-secret"
+
+    def test_none_values_preserved(self):
+        """None values in EffectiveConfig should be preserved (not replaced with defaults)."""
+        custom = EffectiveConfig(
+            llm_api_base_url="https://custom.example.com/v1",
+            llm_model="custom-model",
+            llm_api_key=None,
+            github_token=None,
+            github_webhook_secret=None,
+        )
+        set_effective_config(custom)
+        cfg = get_effective_config()
+        assert cfg.llm_api_key is None
+        assert cfg.github_token is None
+        assert cfg.github_webhook_secret is None
 
 
 @pytest.mark.asyncio
-async def test_runtime_config_reaches_assistant_github_and_webhook(monkeypatch):
-    monkeypatch.setattr("app.api.routes.users.persist_system_config", lambda: None)
-    monkeypatch.setattr(settings, "llm_api_base_url", "https://initial.example.com/v1")
-    monkeypatch.setattr(settings, "llm_model", "initial-model")
-    monkeypatch.setattr(settings, "llm_api_key", None)
-    monkeypatch.setattr(settings, "github_token", None)
-    monkeypatch.setattr(settings, "github_webhook_secret", None)
-
-    public_config = await update_system_config(SystemConfigUpdate(
+async def test_effective_config_reaches_assistant_and_github(monkeypatch):
+    """When effective config is set, downstream consumers read from it."""
+    custom = EffectiveConfig(
         llm_api_base_url="https://runtime.example.com/v1",
         llm_model="runtime-model",
         llm_api_key="runtime-llm-key",
         github_token="runtime-github-token",
         github_webhook_secret="runtime-webhook-secret",
-    ))
-    assert public_config.llm_api_key_configured is True
-    assert public_config.github_token_configured is True
-    assert public_config.github_webhook_secret_configured is True
-    assert "runtime-llm-key" not in public_config.model_dump_json()
+    )
+    set_effective_config(custom)
 
     assistant_client_args = {}
 
@@ -42,7 +77,6 @@ async def test_runtime_config_reaches_assistant_github_and_webhook(monkeypatch):
         "api_key": "runtime-llm-key",
         "base_url": "https://runtime.example.com/v1",
     }
-    assert settings.llm_model == "runtime-model"
 
     github_client_args = {}
 
@@ -54,32 +88,5 @@ async def test_runtime_config_reaches_assistant_github_and_webhook(monkeypatch):
     from app.services.github_client import GitHubClient
 
     GitHubClient()
+    assert github_client_args["base_url"] == settings.github_api_base_url
     assert github_client_args["headers"]["Authorization"] == "Bearer runtime-github-token"
-
-    # Webhook signature verification reads this same settings singleton per request.
-    assert settings.github_webhook_secret == "runtime-webhook-secret"
-
-
-def test_runtime_config_is_persisted_to_an_isolated_env_file(tmp_path, monkeypatch):
-    from dotenv import dotenv_values
-
-    from app.core.config import persist_system_config
-
-    env_file = tmp_path / ".env"
-    env_file.write_text("UNRELATED=value\n", encoding="utf-8")
-    monkeypatch.setenv("ISSUESCOPE_RUNTIME_ENV_FILE", str(env_file))
-    monkeypatch.setattr(settings, "llm_api_base_url", "https://persisted.example.com/v1")
-    monkeypatch.setattr(settings, "llm_model", "persisted-model")
-    monkeypatch.setattr(settings, "llm_api_key", "persisted-llm-key")
-    monkeypatch.setattr(settings, "github_token", "persisted-github-token")
-    monkeypatch.setattr(settings, "github_webhook_secret", "persisted-webhook-secret")
-
-    persist_system_config()
-
-    values = dotenv_values(env_file)
-    assert values["UNRELATED"] == "value"
-    assert values["LLM_API_BASE_URL"] == "https://persisted.example.com/v1"
-    assert values["LLM_MODEL"] == "persisted-model"
-    assert values["LLM_API_KEY"] == "persisted-llm-key"
-    assert values["GITHUB_TOKEN"] == "persisted-github-token"
-    assert values["GITHUB_WEBHOOK_SECRET"] == "persisted-webhook-secret"

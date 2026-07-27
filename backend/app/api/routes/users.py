@@ -1,87 +1,152 @@
-"""User management endpoints."""
+"""User management and authentication endpoints."""
 
 from uuid import UUID
-from threading import RLock
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.core.config import persist_system_config, settings
-from app.schemas.user import SystemConfig, SystemConfigUpdate, User, UserCreate, UserUpdate
-from app.storage.users import DuplicateEmailError, user_store
+from app.core.security import create_access_token, get_current_user
+from app.schemas.user import (
+    LoginRequest,
+    TokenResponse,
+    User,
+    UserConfig,
+    UserConfigUpdate,
+    UserCreate,
+    UserUpdate,
+    UserWithConfig,
+)
+from app.storage.users import DuplicateEmailError, get_user_store
 
 router = APIRouter(prefix="/users", tags=["users"])
-config_lock = RLock()
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def current_system_config() -> SystemConfig:
-    return SystemConfig(
-        llm_api_base_url=settings.llm_api_base_url,
-        llm_model=settings.llm_model,
-        llm_api_key_configured=bool(settings.llm_api_key),
-        github_token_configured=bool(settings.github_token),
-        github_webhook_secret_configured=bool(settings.github_webhook_secret),
-    )
-
-
-@router.post("", response_model=User, status_code=status.HTTP_201_CREATED)
-async def create_user(payload: UserCreate) -> User:
+@auth_router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def register(payload: UserCreate) -> TokenResponse:
+    """Register a new user account and return a JWT token."""
+    store = get_user_store()
     try:
-        return user_store.create(payload)
+        user = store.create_user(payload.name, payload.email, payload.password)
     except DuplicateEmailError as exc:
         raise HTTPException(status_code=409, detail="A user with this email already exists.") from exc
 
+    token = create_access_token(str(user.id))
+    return TokenResponse(access_token=token, user=user)
+
+
+@auth_router.post("/login", response_model=TokenResponse)
+async def login(payload: LoginRequest) -> TokenResponse:
+    """Authenticate with email and password, return a JWT token."""
+    store = get_user_store()
+    user = store.authenticate(payload.email, payload.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    token = create_access_token(str(user.id))
+    return TokenResponse(access_token=token, user=user)
+
+
+@auth_router.get("/me", response_model=UserWithConfig)
+async def get_me(current_user: User = Depends(get_current_user)) -> UserWithConfig:
+    """Return the currently authenticated user and their config."""
+    store = get_user_store()
+    config = store.get_user_config(current_user.id) or UserConfig(
+        llm_api_base_url="",
+        llm_model="",
+        llm_api_key_configured=False,
+        github_token_configured=False,
+        github_webhook_secret_configured=False,
+    )
+    return UserWithConfig(user=current_user, config=config)
+
+
+# ---------------------------------------------------------------------------
+# Per-User Configuration
+# ---------------------------------------------------------------------------
+
+
+@router.get("/me/config", response_model=UserConfig)
+async def get_my_config(current_user: User = Depends(get_current_user)) -> UserConfig:
+    """Return the current user's integration config."""
+    store = get_user_store()
+    config = store.get_user_config(current_user.id)
+    if config is None:
+        from app.core.config import settings
+        return UserConfig(
+            llm_api_base_url=settings.llm_api_base_url,
+            llm_model=settings.llm_model,
+            llm_api_key_configured=False,
+            github_token_configured=False,
+            github_webhook_secret_configured=False,
+        )
+    return config
+
+
+@router.patch("/me/config", response_model=UserConfig)
+async def update_my_config(
+    payload: UserConfigUpdate,
+    current_user: User = Depends(get_current_user),
+) -> UserConfig:
+    """Update the current user's integration config."""
+    store = get_user_store()
+    return store.upsert_user_config(current_user.id, payload)
+
+
+# ---------------------------------------------------------------------------
+# Admin permission helper
+# ---------------------------------------------------------------------------
+
+
+async def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """Require the current user to have the admin role."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
+    return current_user
+
+
+# ---------------------------------------------------------------------------
+# User CRUD (admin-only for listing/deleting, self-service for profile)
+# ---------------------------------------------------------------------------
+
 
 @router.get("", response_model=list[User])
-async def list_users() -> list[User]:
-    return user_store.list()
-
-
-@router.get("/config", response_model=SystemConfig)
-async def get_system_config() -> SystemConfig:
-    """Return non-secret integration settings and secret presence flags."""
-    return current_system_config()
-
-
-@router.patch("/config", response_model=SystemConfig)
-async def update_system_config(payload: SystemConfigUpdate) -> SystemConfig:
-    """Update and persist integrations without returning stored secrets."""
-    with config_lock:
-        if payload.llm_api_base_url is not None:
-            settings.llm_api_base_url = payload.llm_api_base_url
-        if payload.llm_model is not None:
-            settings.llm_model = payload.llm_model
-
-        if payload.clear_llm_api_key:
-            settings.llm_api_key = None
-        elif payload.llm_api_key is not None:
-            settings.llm_api_key = payload.llm_api_key
-
-        if payload.clear_github_token:
-            settings.github_token = None
-        elif payload.github_token is not None:
-            settings.github_token = payload.github_token
-
-        if payload.clear_github_webhook_secret:
-            settings.github_webhook_secret = None
-        elif payload.github_webhook_secret is not None:
-            settings.github_webhook_secret = payload.github_webhook_secret
-
-        persist_system_config()
-        return current_system_config()
+async def list_users(
+    _admin: User = Depends(require_admin),
+) -> list[User]:
+    """List all users (admin only)."""
+    return get_user_store().list_users()
 
 
 @router.get("/{user_id}", response_model=User)
-async def get_user(user_id: UUID) -> User:
-    user = user_store.get(user_id)
+async def get_user(
+    user_id: UUID,
+    _admin: User = Depends(require_admin),
+) -> User:
+    """Get a specific user by ID (admin only)."""
+    user = get_user_store().get_user(user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User was not found.")
     return user
 
 
 @router.patch("/{user_id}", response_model=User)
-async def update_user(user_id: UUID, payload: UserUpdate) -> User:
+async def update_user(
+    user_id: UUID,
+    payload: UserUpdate,
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Update your own profile (or any user if admin)."""
+    if current_user.role != "admin" and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="You can only update your own profile.")
+
+    store = get_user_store()
     try:
-        user = user_store.update(user_id, payload)
+        user = store.update_user(user_id, payload)
     except DuplicateEmailError as exc:
         raise HTTPException(status_code=409, detail="A user with this email already exists.") from exc
     if user is None:
@@ -90,7 +155,13 @@ async def update_user(user_id: UUID, payload: UserUpdate) -> User:
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: UUID) -> Response:
-    if not user_store.delete(user_id):
+async def delete_user(
+    user_id: UUID,
+    admin: User = Depends(require_admin),
+) -> Response:
+    """Delete a user (admin only). Cannot delete yourself."""
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account.")
+    if not get_user_store().delete_user(user_id):
         raise HTTPException(status_code=404, detail="User was not found.")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

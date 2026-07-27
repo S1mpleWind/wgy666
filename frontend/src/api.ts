@@ -8,6 +8,28 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
   || `${window.location.protocol}//${window.location.hostname}:8000`
 
+const TOKEN_KEY = 'issuescope_token'
+
+function getToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> || {}),
+  }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
+  }
+  return fetch(url, { ...options, headers })
+}
+
 // -- Types (mirrors backend/app/schemas/) ---------------------------------
 
 export type CategorySummary = {
@@ -186,6 +208,7 @@ export type User = {
   id: string
   name: string
   email: string
+  role: string
   created_at: string
   updated_at: string
 }
@@ -223,51 +246,54 @@ async function userResponse<T>(response: Response): Promise<T> {
 }
 
 export async function fetchUsers(): Promise<User[]> {
-  return userResponse(await fetch(`${API_BASE_URL}/api/users`))
+  return userResponse(await authFetch(`${API_BASE_URL}/api/users`))
 }
 
 export async function createUser(payload: UserPayload): Promise<User> {
-  return userResponse(await fetch(`${API_BASE_URL}/api/users`, {
+  return userResponse(await authFetch(`${API_BASE_URL}/api/users`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }))
 }
 
 export async function updateUser(userId: string, payload: Partial<UserPayload>): Promise<User> {
-  return userResponse(await fetch(`${API_BASE_URL}/api/users/${userId}`, {
+  return userResponse(await authFetch(`${API_BASE_URL}/api/users/${userId}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }))
 }
 
 export async function deleteUser(userId: string): Promise<void> {
-  return userResponse(await fetch(`${API_BASE_URL}/api/users/${userId}`, { method: 'DELETE' }))
+  return userResponse(await authFetch(`${API_BASE_URL}/api/users/${userId}`, { method: 'DELETE' }))
 }
 
-export async function fetchSystemConfig(): Promise<SystemConfig> {
-  return userResponse(await fetch(`${API_BASE_URL}/api/users/config`))
+/** Fetch current user's per-user config. */
+export async function fetchUserConfig(): Promise<SystemConfig> {
+  return userResponse(await authFetch(`${API_BASE_URL}/api/users/me/config`))
 }
 
-export async function updateSystemConfig(payload: SystemConfigUpdate): Promise<SystemConfig> {
-  return userResponse(await fetch(`${API_BASE_URL}/api/users/config`, {
+/** Update current user's per-user config. */
+export async function updateUserConfig(payload: SystemConfigUpdate): Promise<SystemConfig> {
+  return userResponse(await authFetch(`${API_BASE_URL}/api/users/me/config`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }))
 }
 
+// Legacy aliases for backward compatibility
+export const fetchSystemConfig = fetchUserConfig
+export const updateSystemConfig = updateUserConfig
+
 /** List synced repositories. */
 export async function fetchRepositoryList(): Promise<RepositoryListItem[]> {
-  const response = await fetch(`${API_BASE_URL}/api/repositories`)
+  const response = await authFetch(`${API_BASE_URL}/api/repositories`)
   if (!response.ok) throw new Error(`Failed to list repos: ${response.status}`)
   return response.json()
 }
 
 /** Load a cached repository snapshot (no sync, instant). */
 export async function fetchRepositorySnapshot(owner: string, name: string): Promise<RepositorySnapshot> {
-  const response = await fetch(`${API_BASE_URL}/api/repositories/${owner}/${name}`)
+  const response = await authFetch(`${API_BASE_URL}/api/repositories/${owner}/${name}`)
   if (!response.ok) {
     const error = await response.json().catch(() => null)
     throw new Error(error?.detail ?? `Failed to load repo: ${response.status}`)
@@ -277,11 +303,8 @@ export async function fetchRepositorySnapshot(owner: string, name: string): Prom
 
 /** Trigger a full repository sync: fetch → classify → cache. */
 export async function syncRepository(payload: SyncRepositoryPayload): Promise<RepositorySnapshot> {
-  const response = await fetch(`${API_BASE_URL}/api/repositories/sync`, {
+  const response = await authFetch(`${API_BASE_URL}/api/repositories/sync`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(payload),
   })
 
@@ -329,7 +352,7 @@ export type WebhookEventDetail = WebhookEventItem & {
 
 /** Fetch public webhook configuration status from the backend. */
 export async function fetchWebhookConfig(): Promise<{ url: string; secret_configured: boolean }> {
-  const response = await fetch(`${API_BASE_URL}/api/webhooks/config`)
+  const response = await authFetch(`${API_BASE_URL}/api/webhooks/config`)
 
   if (!response.ok) {
     throw new Error(`Failed to fetch webhook config: ${response.status}`)
@@ -342,7 +365,7 @@ export async function fetchWebhookConfig(): Promise<{ url: string; secret_config
 export async function fetchWebhookEvents(limit = 20, repository?: string): Promise<WebhookEventItem[]> {
   const params = new URLSearchParams({ limit: String(limit) })
   if (repository) params.set('repository', repository)
-  const response = await fetch(`${API_BASE_URL}/api/webhooks/events?${params}`)
+  const response = await authFetch(`${API_BASE_URL}/api/webhooks/events?${params}`)
 
   if (!response.ok) {
     const error = await response.json().catch(() => null)
@@ -354,7 +377,7 @@ export async function fetchWebhookEvents(limit = 20, repository?: string): Promi
 
 /** Fetch full detail for a single webhook event by event_id. */
 export async function fetchWebhookEventDetail(eventId: string): Promise<WebhookEventDetail> {
-  const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}`)
+  const response = await authFetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}`)
 
   if (!response.ok) {
     const error = await response.json().catch(() => null)
@@ -366,7 +389,7 @@ export async function fetchWebhookEventDetail(eventId: string): Promise<WebhookE
 
 /** Trigger an auto-fix for a bug issue. Generates a PR via AgentHarness. */
 export async function postAutoFix(eventId: string): Promise<{ status: string; pr_url: string; branch_name: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/fix`, {
+  const response = await authFetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/fix`, {
     method: 'POST',
   })
   if (!response.ok) {
@@ -378,7 +401,7 @@ export async function postAutoFix(eventId: string): Promise<{ status: string; pr
 
 /** Mark a webhook event as read or deleted. */
 export async function updateWebhookEvent(eventId: string, action: 'read' | 'delete'): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}?action=${action}`, {
+  const response = await authFetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}?action=${action}`, {
     method: 'PATCH',
   })
   if (!response.ok) {
@@ -389,9 +412,8 @@ export async function updateWebhookEvent(eventId: string, action: 'read' | 'dele
 
 /** Post the exact reply draft approved by the maintainer. */
 export async function postWebhookReply(eventId: string, replyText: string): Promise<{ status: string; reply_text: string; comment_url: string; source?: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/reply`, {
+  const response = await authFetch(`${API_BASE_URL}/api/webhooks/events/${encodeURIComponent(eventId)}/reply`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reply_text: replyText }),
   })
 
@@ -405,7 +427,7 @@ export async function postWebhookReply(eventId: string, replyText: string): Prom
 
 /** Fetch all synced file contents for a repository. */
 export async function fetchFileContents(owner: string, name: string): Promise<RepositoryFileContent[]> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/api/repositories/${owner}/${name}/tools/file-contents`,
   )
 
@@ -423,7 +445,7 @@ export async function fetchFileContent(
   name: string,
   path: string,
 ): Promise<RepositoryFileContent> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/api/repositories/${owner}/${name}/tools/file-contents/${encodeURIComponent(path)}`,
   )
 
@@ -440,7 +462,7 @@ export async function fetchProjectStructure(
   owner: string,
   name: string,
 ): Promise<ProjectStructureResponse> {
-  const response = await fetch(
+  const response = await authFetch(
     `${API_BASE_URL}/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/tools/project-structure?freshness=cache_first`,
   )
 
@@ -454,11 +476,8 @@ export async function fetchProjectStructure(
 
 /** Ask the repository assistant a question. */
 export async function askAssistant(payload: AssistantChatRequest): Promise<AssistantChatResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/assistant/chat`, {
+  const response = await authFetch(`${API_BASE_URL}/api/assistant/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       freshness: 'cache_first',
       history: [],
