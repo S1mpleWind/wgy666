@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.effective_config import get_effective_config
 from app.services.embeddings import EmbeddingService
 from app.services.faq_service import _extract_keywords
 
@@ -173,7 +174,7 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
     snapshot = repository_store.get(owner, name)
     if not snapshot:
         raise HTTPException(status_code=404, detail="Repository not synced")
-    if not settings.llm_api_key:
+    if not get_effective_config().llm_api_key:
         raise HTTPException(status_code=503, detail="LLM is not configured")
 
     # Group issues by category + keyword similarity.
@@ -200,8 +201,8 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
         return FaqAutoGenerateResponse(created=0, entries=[], reason=reason)
 
     client = AsyncOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_api_base_url,
+        api_key=get_effective_config().llm_api_key,
+        base_url=get_effective_config().llm_api_base_url,
     )
     from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import insert
@@ -230,7 +231,7 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
 
         try:
             completion = await client.chat.completions.create(
-                model=settings.llm_model,
+                model=get_effective_config().llm_model,
                 messages=[
                     {"role": "system",
                      "content": "You are a FAQ generator. Summarise similar issues into one FAQ entry. Output JSON."},

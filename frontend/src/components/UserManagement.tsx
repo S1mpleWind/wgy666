@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { AlertCircle, Check, KeyRound, Loader2, Pencil, Plus, RefreshCw, Save, Trash2, UserRound, Users, Webhook, X } from 'lucide-react'
+import { AlertCircle, Check, KeyRound, Loader2, LogOut, Pencil, RefreshCw, Save, Shield, Trash2, UserRound, Users, Webhook, X } from 'lucide-react'
 
-import { createUser, deleteUser, fetchSystemConfig, fetchUsers, updateSystemConfig, updateUser } from '../api'
+import { deleteUser, fetchUserConfig, fetchUsers, updateUser, updateUserConfig } from '../api'
 import type { SystemConfig, SystemConfigUpdate, User } from '../api'
+import { useAuth } from '../contexts/AuthContext'
 import '../component-css/UserManagement.css'
 
 const emptyForm = { name: '', email: '' }
@@ -14,11 +15,13 @@ function errorMessage(error: unknown): string {
 }
 
 export function UserManagement() {
+  const { user: currentUser, logout } = useAuth()
+  const isAdmin = currentUser?.role === 'admin'
+
   const [users, setUsers] = useState<User[]>([])
-  const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState(emptyForm)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -29,6 +32,7 @@ export function UserManagement() {
   const [configSaved, setConfigSaved] = useState(false)
 
   const loadUsers = useCallback(async () => {
+    if (!isAdmin) return
     setLoading(true)
     setError(null)
     try {
@@ -38,14 +42,14 @@ export function UserManagement() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isAdmin])
 
   useEffect(() => {
-    loadUsers()
-  }, [loadUsers])
+    if (isAdmin) loadUsers()
+  }, [isAdmin, loadUsers])
 
   useEffect(() => {
-    fetchSystemConfig()
+    fetchUserConfig()
       .then((value) => {
         setConfig(value)
         setConfigForm((current) => ({
@@ -71,7 +75,7 @@ export function UserManagement() {
     if (configForm.github_token) payload.github_token = configForm.github_token
     if (configForm.github_webhook_secret) payload.github_webhook_secret = configForm.github_webhook_secret
     try {
-      setConfig(await updateSystemConfig(payload))
+      setConfig(await updateUserConfig(payload))
       setConfigForm((current) => ({ ...current, ...emptySecrets }))
       setConfigSaved(true)
     } catch (requestError) {
@@ -88,27 +92,12 @@ export function UserManagement() {
     setError(null)
     try {
       const clearField = `clear_${field}` as keyof SystemConfigUpdate
-      setConfig(await updateSystemConfig({ [clearField]: true }))
+      setConfig(await updateUserConfig({ [clearField]: true }))
       setConfigSaved(true)
     } catch (requestError) {
       setError(errorMessage(requestError))
     } finally {
       setConfigSaving(false)
-    }
-  }
-
-  async function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setSaving(true)
-    setError(null)
-    try {
-      const user = await createUser(form)
-      setUsers((current) => [...current, user])
-      setForm(emptyForm)
-    } catch (requestError) {
-      setError(errorMessage(requestError))
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -135,7 +124,11 @@ export function UserManagement() {
   }
 
   async function handleDelete(user: User) {
-    if (!window.confirm(`确定删除用户“${user.name}”吗？`)) return
+    if (user.id === currentUser?.id) {
+      setError('不能删除自己的账户。')
+      return
+    }
+    if (!window.confirm(`确定删除用户"${user.name}"吗？`)) return
     setDeletingId(user.id)
     setError(null)
     try {
@@ -155,17 +148,35 @@ export function UserManagement() {
         <div>
           <span className="eyebrow">系统管理</span>
           <h2><Users size={22} aria-hidden="true" />用户管理</h2>
-          <p>维护可使用 IssueScope 的用户资料。</p>
+          <p>维护个人配置{isAdmin ? '并管理用户资料' : ''}。</p>
         </div>
-        <button className="ghost-button" type="button" onClick={loadUsers} disabled={loading}>
-          <RefreshCw className={loading ? 'spin' : ''} size={16} aria-hidden="true" />刷新
-        </button>
+        <div className="header-actions">
+          {currentUser && (
+            <span className="current-user-badge">
+              <span className="user-avatar-sm">{currentUser.name.slice(0, 1).toUpperCase()}</span>
+              {currentUser.name}
+              {isAdmin && <span className="admin-badge"><Shield size={12} />管理员</span>}
+            </span>
+          )}
+          {isAdmin && (
+            <button className="ghost-button" type="button" onClick={loadUsers} disabled={loading}>
+              <RefreshCw className={loading ? 'spin' : ''} size={16} aria-hidden="true" />刷新
+            </button>
+          )}
+          <button className="ghost-button" type="button" onClick={logout}>
+            <LogOut size={16} aria-hidden="true" />退出登录
+          </button>
+        </div>
       </header>
 
+      {/* Per-user config section */}
       <form className="integration-config" onSubmit={handleConfigSave}>
         <div className="config-section-heading">
           <span><KeyRound size={18} aria-hidden="true" /></span>
-          <div><h3>问答与 GitHub 配置</h3><p>保存后立即生效，并在后端重启后保留。</p></div>
+          <div>
+            <h3>我的问答与 GitHub 配置</h3>
+            <p>此配置仅对你生效，独立于其他用户。</p>
+          </div>
           {configSaved && <span className="config-saved"><Check size={14} />已保存</span>}
         </div>
 
@@ -196,72 +207,63 @@ export function UserManagement() {
         </div>
       </form>
 
-      <form className="user-create-form" onSubmit={handleCreate}>
-        <div className="user-form-title">
-          <span><Plus size={17} aria-hidden="true" /></span>
-          <div><strong>新增用户</strong><small>邮箱在系统中不可重复</small></div>
-        </div>
-        <label>
-          姓名
-          <input required maxLength={100} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="输入用户姓名" />
-        </label>
-        <label>
-          邮箱
-          <input required type="email" maxLength={320} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="name@example.com" />
-        </label>
-        <button className="primary-button" type="submit" disabled={saving}>
-          {saving && !editingId ? <Loader2 className="spin" size={17} /> : <Plus size={17} />}
-          添加用户
-        </button>
-      </form>
-
       {error && <div className="notice error"><AlertCircle size={18} /><span>{error}</span></div>}
 
-      <section className="user-list-section">
-        <div className="user-list-heading">
-          <div><h3>用户列表</h3><p>{users.length} 位用户</p></div>
-        </div>
-
-        {loading ? (
-          <div className="user-list-state"><Loader2 className="spin" size={22} /><span>正在加载用户</span></div>
-        ) : users.length === 0 ? (
-          <div className="user-list-state"><UserRound size={25} /><strong>暂无用户</strong></div>
-        ) : (
-          <div className="user-table-wrap">
-            <table className="user-table">
-              <thead><tr><th>用户</th><th>邮箱</th><th>创建时间</th><th><span className="sr-only">操作</span></th></tr></thead>
-              <tbody>
-                {users.map((user) => editingId === user.id ? (
-                  <tr key={user.id} className="editing-row">
-                    <td colSpan={4}>
-                      <form className="user-edit-form" onSubmit={handleUpdate}>
-                        <input aria-label="姓名" required maxLength={100} value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} />
-                        <input aria-label="邮箱" required type="email" maxLength={320} value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} />
-                        <div className="row-actions">
-                          <button className="icon-button-sm save" type="submit" disabled={saving} title="保存"><Check size={15} /></button>
-                          <button className="icon-button-sm" type="button" onClick={() => setEditingId(null)} title="取消"><X size={15} /></button>
-                        </div>
-                      </form>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={user.id}>
-                    <td><span className="user-avatar">{user.name.slice(0, 1).toUpperCase()}</span><strong>{user.name}</strong></td>
-                    <td>{user.email}</td>
-                    <td>{new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(user.created_at))}</td>
-                    <td><div className="row-actions">
-                      <button className="icon-button-sm" type="button" onClick={() => startEditing(user)} title="编辑用户"><Pencil size={14} /></button>
-                      <button className="icon-button-sm danger" type="button" onClick={() => handleDelete(user)} disabled={deletingId === user.id} title="删除用户">
-                        {deletingId === user.id ? <Loader2 className="spin" size={14} /> : <Trash2 size={14} />}
-                      </button>
-                    </div></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* User list — admin only */}
+      {isAdmin && (
+        <section className="user-list-section">
+          <div className="user-list-heading">
+            <div><h3>用户列表</h3><p>{users.length} 位用户</p></div>
           </div>
-        )}
-      </section>
+
+          {loading ? (
+            <div className="user-list-state"><Loader2 className="spin" size={22} /><span>正在加载用户</span></div>
+          ) : users.length === 0 ? (
+            <div className="user-list-state"><UserRound size={25} /><strong>暂无用户</strong></div>
+          ) : (
+            <div className="user-table-wrap">
+              <table className="user-table">
+                <thead><tr><th>用户</th><th>邮箱</th><th>角色</th><th>创建时间</th><th><span className="sr-only">操作</span></th></tr></thead>
+                <tbody>
+                  {users.map((user) => editingId === user.id ? (
+                    <tr key={user.id} className="editing-row">
+                      <td colSpan={5}>
+                        <form className="user-edit-form" onSubmit={handleUpdate}>
+                          <input aria-label="姓名" required maxLength={100} value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} />
+                          <input aria-label="邮箱" required type="email" maxLength={320} value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} />
+                          <div className="row-actions">
+                            <button className="icon-button-sm save" type="submit" disabled={saving} title="保存"><Check size={15} /></button>
+                            <button className="icon-button-sm" type="button" onClick={() => setEditingId(null)} title="取消"><X size={15} /></button>
+                          </div>
+                        </form>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={user.id}>
+                      <td><span className="user-avatar">{user.name.slice(0, 1).toUpperCase()}</span><strong>{user.name}</strong></td>
+                      <td>{user.email}</td>
+                      <td>
+                        {user.role === 'admin' ? (
+                          <span className="role-badge admin"><Shield size={11} />管理员</span>
+                        ) : (
+                          <span className="role-badge user">普通用户</span>
+                        )}
+                      </td>
+                      <td>{new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(user.created_at))}</td>
+                      <td><div className="row-actions">
+                        <button className="icon-button-sm" type="button" onClick={() => startEditing(user)} title="编辑用户"><Pencil size={14} /></button>
+                        <button className="icon-button-sm danger" type="button" onClick={() => handleDelete(user)} disabled={deletingId === user.id || user.id === currentUser?.id} title={user.id === currentUser?.id ? '不能删除自己' : '删除用户'}>
+                          {deletingId === user.id ? <Loader2 className="spin" size={14} /> : <Trash2 size={14} />}
+                        </button>
+                      </div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </section>
   )
 }

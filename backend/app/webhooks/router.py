@@ -4,6 +4,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.core.effective_config import get_effective_config
 from app.schemas.issue import IssueClassification
 from app.webhooks.handler import (
     WebhookEventRecord,
@@ -34,7 +35,7 @@ async def github_webhook(
     """
     body = await request.body()
 
-    if not verify_signature(body, x_hub_signature_256, settings.github_webhook_secret):
+    if not verify_signature(body, x_hub_signature_256, get_effective_config().github_webhook_secret):
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
     try:
@@ -57,7 +58,7 @@ async def webhook_config(request: Request) -> dict:
     webhook_url = f"{scheme}://{host}/api/webhooks/github"
     return {
         "url": webhook_url,
-        "secret_configured": bool(settings.github_webhook_secret),
+        "secret_configured": bool(get_effective_config().github_webhook_secret),
     }
 
 

@@ -56,6 +56,7 @@ from urllib.parse import quote
 import httpx
 
 from app.core.config import settings
+from app.core.effective_config import get_effective_config
 from app.services.repository_url import RepositoryRef
 
 
@@ -188,8 +189,9 @@ class GitHubClient:
             "X-GitHub-Api-Version": settings.github_api_version,
             "User-Agent": "wgy666-github-issue-analysis-platform",
         }
-        if settings.github_token:
-            headers["Authorization"] = f"Bearer {settings.github_token}"
+        cfg = get_effective_config()
+        if cfg.github_token:
+            headers["Authorization"] = f"Bearer {cfg.github_token}"
 
         self._client = httpx.AsyncClient(
             base_url=settings.github_api_base_url,

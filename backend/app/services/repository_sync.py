@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
+from app.core.effective_config import get_effective_config
 
 from app.schemas.issue import GitHubIssue
 from app.schemas.repository import (
@@ -106,7 +107,7 @@ class RepositorySyncService:
             branch = repository.get("default_branch") or "main"
 
         # -- File classification + source content from git clone --------------
-        async with GitCloneService(clone_url, token=settings.github_token) as git_clone:
+        async with GitCloneService(clone_url, token=get_effective_config().github_token) as git_clone:
             source_revision = await asyncio.to_thread(git_clone.head_revision)
             # Channel A: random sample for accurate category statistics
             tree = await asyncio.to_thread(

@@ -1,4 +1,4 @@
-"""Request and response models for user management."""
+"""Request and response models for user management and authentication."""
 
 from datetime import datetime
 from uuid import UUID
@@ -7,11 +7,17 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+# ---------------------------------------------------------------------------
+# User CRUD
+# ---------------------------------------------------------------------------
+
+
 class UserCreate(BaseModel):
-    """Payload for creating a user."""
+    """Payload for creating a user (registration)."""
 
     name: str = Field(min_length=1, max_length=100)
     email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=6, max_length=128)
 
     @field_validator("name", "email")
     @classmethod
@@ -36,6 +42,7 @@ class UserUpdate(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     email: str | None = Field(default=None, min_length=3, max_length=320)
+    password: str | None = Field(default=None, min_length=6, max_length=128)
 
     @field_validator("name", "email")
     @classmethod
@@ -60,7 +67,7 @@ class UserUpdate(BaseModel):
 
     @model_validator(mode="after")
     def require_a_field(self) -> "UserUpdate":
-        if self.name is None and self.email is None:
+        if self.name is None and self.email is None and self.password is None:
             raise ValueError("at least one field must be provided")
         return self
 
@@ -73,12 +80,43 @@ class User(BaseModel):
     id: UUID
     name: str
     email: str
+    role: str = "user"
     created_at: datetime
     updated_at: datetime
 
 
-class SystemConfigUpdate(BaseModel):
-    """Runtime integration settings editable from the user management page."""
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+
+class LoginRequest(BaseModel):
+    """Payload for logging in."""
+
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
+
+
+class TokenResponse(BaseModel):
+    """JWT token returned on successful login."""
+
+    access_token: str
+    token_type: str = "bearer"
+    user: User
+
+
+# ---------------------------------------------------------------------------
+# Per-User Configuration
+# ---------------------------------------------------------------------------
+
+
+class UserConfigUpdate(BaseModel):
+    """Runtime integration settings editable per user."""
 
     llm_api_base_url: str | None = Field(default=None, min_length=1, max_length=2048)
     llm_model: str | None = Field(default=None, min_length=1, max_length=255)
@@ -118,11 +156,26 @@ class SystemConfigUpdate(BaseModel):
         return value.strip() or None
 
 
-class SystemConfig(BaseModel):
-    """Public integration settings; secret values are represented by flags."""
+class UserConfig(BaseModel):
+    """Per-user integration settings; secret values are represented by flags."""
 
     llm_api_base_url: str
     llm_model: str
     llm_api_key_configured: bool
     github_token_configured: bool
     github_webhook_secret_configured: bool
+
+
+class UserWithConfig(BaseModel):
+    """A user together with their integration config."""
+
+    user: User
+    config: UserConfig
+
+
+# ---------------------------------------------------------------------------
+# Legacy system-config aliases (kept for test compatibility)
+# ---------------------------------------------------------------------------
+
+SystemConfigUpdate = UserConfigUpdate
+SystemConfig = UserConfig

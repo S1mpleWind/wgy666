@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from app.assistant.harness import AgentHarness
-from app.core.config import settings
+from app.core.effective_config import get_effective_config
 from app.services.github_client import GitHubClient, GitHubClientError
 from app.services.repository_url import RepositoryRef
 from app.storage import repository_store
@@ -55,7 +55,8 @@ class AutoFixService:
     """Analyse a bug issue and create a fix pull request."""
 
     def __init__(self) -> None:
-        self._llm_available = bool(settings.llm_api_key)
+        # 检查是否配置了 LLM API key，未配置则无法生成修复
+        self._llm_available = bool(get_effective_config().llm_api_key)
 
     async def fix_issue(self, owner, name, issue_number, issue_title, issue_body, labels) -> FixResult:
         """Full auto-fix pipeline: locate → generate → branch → commit → PR."""

@@ -25,7 +25,9 @@ import { FileBrowser } from './components/FileBrowser'
 import { ChatSidebar } from './components/ChatSidebar'
 import { IssueDetailModal, IssueOverviewModal, SyncedIssueModal } from './components/IssueModals'
 import { ProjectAnalysisPanel } from './components/ProjectAnalysisPanel'
+import { LoginPage } from './components/LoginPage'
 import { UserManagement } from './components/UserManagement'
+import { useAuth } from './contexts/AuthContext'
 import './WorkspaceTheme.css'
 
 /**
@@ -43,6 +45,8 @@ const defaultForm = {
 type WorkspaceSection = 'overview' | 'analysis' | 'issues' | 'agent' | 'faq' | 'users'
 
 function App() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+
   const [form, setForm] = useState(defaultForm)
   const [snapshot, setSnapshot] = useState<RepositorySnapshot | null>(null)
   const [repoList, setRepoList] = useState<RepositoryListItem[]>([])
@@ -129,44 +133,30 @@ function App() {
   // Auto-poll for new notifications (updates the badge count).
   // Also refreshes snapshot when closed/reopened events are detected.
   const repoName = snapshot?.identity.full_name
+  const repoOwner = snapshot?.identity.owner
+  const repoShortName = snapshot?.identity.name
   useEffect(() => {
+    let cancelled = false
+
     async function pollAndRefresh() {
       try {
         const events = await fetchWebhookEvents(20, repoName)
+        if (cancelled) return
         setWebhookEvents(events)
         // If a closed/reopened event is detected, refresh the snapshot.
-        if (snapshot && repoName && events.some(e => e.action === 'closed' || e.action === 'reopened')) {
-          const snap = await fetchRepositorySnapshot(
-            snapshot.identity.owner, snapshot.identity.name,
-          )
-          setSnapshot(snap)
+        if (repoName && repoOwner && repoShortName && events.some(e => e.action === 'closed' || e.action === 'reopened')) {
+          const snap = await fetchRepositorySnapshot(repoOwner, repoShortName)
+          if (!cancelled) setSnapshot(snap)
         }
       } catch { /* ignore */ }
     }
     const poll = setInterval(pollAndRefresh, 30000)
     pollAndRefresh()
-    return () => clearInterval(poll)
-  }, [repoName])
-
-  // -- Load synced repo list on mount + auto-select last one ----------------
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const repos = await fetchRepositoryList()
-        setRepoList(repos)
-        if (repos.length > 0) {
-          const last = localStorage.getItem('lastRepo') || `${repos[0].owner}/${repos[0].name}`
-          const match = repos.find(r => `${r.owner}/${r.name}` === last)
-          if (match) {
-            const snap = await fetchRepositorySnapshot(match.owner, match.name)
-            setSnapshot(snap)
-            setForm(f => ({ ...f, url: match.html_url }))
-          }
-        }
-      } catch { /* no cached repos */ }
-    })()
-  }, [])
+    return () => {
+      cancelled = true
+      clearInterval(poll)
+    }
+  }, [repoName, repoOwner, repoShortName])
 
   // -- Load synced repo list on mount + auto-select last one ----------------
 
@@ -295,6 +285,19 @@ function App() {
     window.requestAnimationFrame(() => {
       document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
+  }
+
+  // Auth gate: show login page when not authenticated
+  if (authLoading) {
+    return (
+      <main className="workspace" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <Loader2 className="spin" size={32} />
+      </main>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />
   }
 
   return (

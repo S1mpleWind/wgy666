@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.assistant.router import router as assistant_router
 from app.api.routes import health, issues, repositories, repository_tools, users
 from app.core.config import settings
+from app.core.security import AuthMiddleware
 from app.api.routes.faq import router as faq_router
 from app.webhooks.router import router as webhooks_router
 
@@ -20,7 +21,8 @@ def create_app() -> FastAPI:
     Router prefix convention:
       - /api/repositories/*  — repository sync, list, and detail
       - /api/issues/*        — standalone issue classification
-      - /api/users/*         — user management
+      - /api/auth/*          — user registration, login, token refresh
+      - /api/users/*         — user management (authenticated)
       - /api/webhooks/*      — GitHub webhook event receiver
     """
     app = FastAPI(
@@ -42,11 +44,16 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Auth middleware — sets effective user config ContextVar from JWT.
+    # Runs after CORS so preflight requests don't trigger auth logic.
+    app.add_middleware(AuthMiddleware)
+
     app.include_router(health.router, prefix="/api")
     app.include_router(repositories.router, prefix="/api")
     app.include_router(repository_tools.router, prefix="/api")
     app.include_router(issues.router, prefix="/api")
-    app.include_router(users.router, prefix="/api")
+    app.include_router(users.auth_router, prefix="/api")  # /api/auth/*
+    app.include_router(users.router, prefix="/api")       # /api/users/*
     app.include_router(assistant_router, prefix="/api")
     app.include_router(webhooks_router, prefix="/api")
     app.include_router(faq_router, prefix="/api")

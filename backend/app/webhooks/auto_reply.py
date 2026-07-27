@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.core.effective_config import get_effective_config
 from app.services.repository_query import RepositoryQueryService
 
 
@@ -52,11 +53,12 @@ class IssueAutoReplyService:
     """
 
     def __init__(self) -> None:
-        self._llm_available = bool(settings.llm_api_key)
+        self._cfg = get_effective_config()
+        self._llm_available = bool(self._cfg.llm_api_key)
         if self._llm_available:
             self._client = AsyncOpenAI(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_api_base_url,
+                api_key=self._cfg.llm_api_key,
+                base_url=self._cfg.llm_api_base_url,
             )
         self._query = RepositoryQueryService()
 
@@ -117,7 +119,7 @@ class IssueAutoReplyService:
 
         try:
             completion = await self._client.chat.completions.create(
-                model=settings.llm_model,
+                model=self._cfg.llm_model,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=600,
@@ -133,7 +135,7 @@ class IssueAutoReplyService:
         return AutoReplyResult(
             reply_text=reply_text,
             used_llm=True,
-            model=settings.llm_model,
+            model=self._cfg.llm_model,
         )
 
     # ── PR creation (stub / future) ──────────────────────────────────

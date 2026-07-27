@@ -8,6 +8,7 @@ import re
 from openai import AsyncOpenAI
 
 from app.core.config import settings
+from app.core.effective_config import get_effective_config
 from app.services.embeddings import EmbeddingService
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,7 @@ async def faq_match(
                         candidates.append(dict(r))
 
             # ── Stage 2: LLM judgement on candidates ──────────────────
-            if candidates and settings.llm_api_key:
+            if candidates and get_effective_config().llm_api_key:
                 match = await _llm_confirm(text_content, candidates)
                 if match:
                     _hit(conn, match["id"])
@@ -126,9 +127,10 @@ async def faq_match(
 
 async def _llm_confirm(query: str, candidates: list[dict]) -> dict | None:
     """Ask the LLM whether any FAQ candidate matches the incoming issue."""
+    cfg = get_effective_config()
     client = AsyncOpenAI(
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_api_base_url,
+        api_key=cfg.llm_api_key,
+        base_url=cfg.llm_api_base_url,
     )
     items = "\n".join(
         f"FAQ #{i+1}: {c['question']}" for i, c in enumerate(candidates)
@@ -142,7 +144,7 @@ async def _llm_confirm(query: str, candidates: list[dict]) -> dict | None:
 
     try:
         completion = await client.chat.completions.create(
-            model=settings.llm_model,
+            model=cfg.llm_model,
             messages=[
                 {"role": "system", "content": "You match FAQ entries. Reply with only '1', '2', '3', or 'none'."},
                 {"role": "user", "content": prompt},
