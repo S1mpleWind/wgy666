@@ -1,6 +1,7 @@
 """Request and response models for user management and authentication."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 from urllib.parse import urlsplit
 
@@ -118,8 +119,8 @@ class TokenResponse(BaseModel):
 class UserConfigUpdate(BaseModel):
     """Runtime integration settings editable per user."""
 
-    llm_api_base_url: str | None = Field(default=None, min_length=1, max_length=2048)
-    llm_model: str | None = Field(default=None, min_length=1, max_length=255)
+    llm_api_base_url: str | None = Field(default=None, max_length=2048)
+    llm_model: str | None = Field(default=None, max_length=255)
     llm_api_key: str | None = Field(default=None, max_length=4096)
     github_token: str | None = Field(default=None, max_length=4096)
     github_webhook_secret: str | None = Field(default=None, max_length=4096)
@@ -133,6 +134,8 @@ class UserConfigUpdate(BaseModel):
         if value is None:
             return None
         value = value.strip().rstrip("/")
+        if not value:
+            return ""
         parsed = urlsplit(value)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("LLM API base URL must be an HTTP(S) URL")
@@ -144,8 +147,6 @@ class UserConfigUpdate(BaseModel):
         if value is None:
             return None
         value = value.strip()
-        if not value:
-            raise ValueError("LLM model must not be blank")
         return value
 
     @field_validator("llm_api_key", "github_token", "github_webhook_secret")
@@ -164,6 +165,34 @@ class UserConfig(BaseModel):
     llm_api_key_configured: bool
     github_token_configured: bool
     github_webhook_secret_configured: bool
+
+
+class IntegrationConnection(BaseModel):
+    """Health of one configured external integration."""
+
+    status: Literal["connected", "configured", "failed", "not_configured"]
+    message: str
+    checked_at: datetime
+    last_received_at: datetime | None = None
+
+
+class IntegrationStatus(BaseModel):
+    """Connectivity status for the current user's integrations."""
+
+    llm: IntegrationConnection
+    github: IntegrationConnection
+    webhook: IntegrationConnection
+
+
+class UsageStats(BaseModel):
+    """Accumulated external API usage for one user."""
+
+    llm_requests: int = 0
+    github_requests: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    updated_at: datetime | None = None
 
 
 class UserWithConfig(BaseModel):

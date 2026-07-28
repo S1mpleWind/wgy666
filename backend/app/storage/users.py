@@ -8,7 +8,7 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.engine import Engine
 
 from app.core.security import hash_password, verify_password
-from app.schemas.user import User, UserConfig, UserConfigUpdate, UserCreate, UserUpdate
+from app.schemas.user import UsageStats, User, UserConfig, UserConfigUpdate, UserCreate, UserUpdate
 
 
 class DuplicateEmailError(ValueError):
@@ -31,6 +31,7 @@ class UserStore:
         self._password_hashes: dict[UUID, str] = {}
         self._configs: dict[UUID, UserConfig] = {}
         self._raw_configs: dict[UUID, dict] = {}
+        self._usage: dict[UUID, UsageStats] = {}
         self._db_available = engine is not None
 
     # ------------------------------------------------------------------
@@ -211,6 +212,7 @@ class UserStore:
                 self._password_hashes.pop(user_id, None)
                 self._configs.pop(user_id, None)
                 self._raw_configs.pop(user_id, None)
+                self._usage.pop(user_id, None)
                 return True
 
     # ------------------------------------------------------------------
@@ -280,8 +282,6 @@ class UserStore:
     def upsert_user_config(self, user_id: UUID, payload: UserConfigUpdate) -> UserConfig:
         """Create or update the config for a user. Returns the public config."""
         from app.storage.database import user_configs as configs_table
-        from app.core.config import settings as server_settings
-
         if self._db_available and self._engine is not None:
             with self._engine.begin() as conn:
                 existing = conn.execute(
@@ -295,12 +295,12 @@ class UserStore:
                     base_url = (
                         payload.llm_api_base_url
                         if payload.llm_api_base_url is not None
-                        else server_settings.llm_api_base_url
+                        else ""
                     )
                     model = (
                         payload.llm_model
                         if payload.llm_model is not None
-                        else server_settings.llm_model
+                        else ""
                     )
                     conn.execute(
                         insert(configs_table).values(
@@ -347,18 +347,20 @@ class UserStore:
             # In-memory fallback
             with self._lock:
                 now = datetime.now(timezone.utc)
+                current_cfg = self._configs.get(user_id)
                 base_url = (
                     payload.llm_api_base_url
                     if payload.llm_api_base_url is not None
-                    else server_settings.llm_api_base_url
+                    else current_cfg.llm_api_base_url if current_cfg
+                    else ""
                 )
                 model = (
                     payload.llm_model
                     if payload.llm_model is not None
-                    else server_settings.llm_model
+                    else current_cfg.llm_model if current_cfg
+                    else ""
                 )
-                current_cfg = self._configs.get(user_id)
-                current_raw = self._raw_configs.get(user_id) if hasattr(self, '_raw_configs') else {}
+                current_raw = (self._raw_configs.get(user_id) or {}) if hasattr(self, '_raw_configs') else {}
                 api_key = (
                     None if payload.clear_llm_api_key
                     else payload.llm_api_key if payload.llm_api_key is not None
@@ -388,8 +390,8 @@ class UserStore:
                 )
 
         return self.get_user_config(user_id) or UserConfig(
-            llm_api_base_url=server_settings.llm_api_base_url,
-            llm_model=server_settings.llm_model,
+            llm_api_base_url="",
+            llm_model="",
             llm_api_key_configured=False,
             github_token_configured=False,
             github_webhook_secret_configured=False,
@@ -408,6 +410,80 @@ class UserStore:
         else:
             with self._lock:
                 return self._raw_configs.get(user_id)
+
+    def record_usage(
+        self,
+        user_id: UUID,
+        service: str,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        total_tokens: int = 0,
+    ) -> UsageStats:
+        """Increment accumulated LLM or GitHub usage for a user."""
+        from app.storage.database import integration_usage
+
+        now = datetime.now(timezone.utc)
+        llm_delta = 1 if service == "llm" else 0
+        github_delta = 1 if service == "github" else 0
+        prompt_tokens = max(0, int(prompt_tokens or 0))
+        completion_tokens = max(0, int(completion_tokens or 0))
+        total_tokens = max(0, int(total_tokens or prompt_tokens + completion_tokens))
+
+        if self._db_available and self._engine is not None:
+            with self._lock, self._engine.begin() as conn:
+                row = conn.execute(
+                    select(integration_usage).where(integration_usage.c.user_id == str(user_id))
+                ).mappings().first()
+                values = {
+                    "llm_requests": int(row["llm_requests"] if row else 0) + llm_delta,
+                    "github_requests": int(row["github_requests"] if row else 0) + github_delta,
+                    "prompt_tokens": int(row["prompt_tokens"] if row else 0) + prompt_tokens,
+                    "completion_tokens": int(row["completion_tokens"] if row else 0) + completion_tokens,
+                    "total_tokens": int(row["total_tokens"] if row else 0) + total_tokens,
+                    "updated_at": now,
+                }
+                if row is None:
+                    conn.execute(insert(integration_usage).values(user_id=str(user_id), **values))
+                else:
+                    conn.execute(
+                        update(integration_usage)
+                        .where(integration_usage.c.user_id == str(user_id))
+                        .values(**values)
+                    )
+        else:
+            with self._lock:
+                current = self._usage.get(user_id, UsageStats())
+                self._usage[user_id] = UsageStats(
+                    llm_requests=current.llm_requests + llm_delta,
+                    github_requests=current.github_requests + github_delta,
+                    prompt_tokens=current.prompt_tokens + prompt_tokens,
+                    completion_tokens=current.completion_tokens + completion_tokens,
+                    total_tokens=current.total_tokens + total_tokens,
+                    updated_at=now,
+                )
+        return self.get_usage(user_id)
+
+    def get_usage(self, user_id: UUID) -> UsageStats:
+        """Return accumulated integration usage for a user."""
+        from app.storage.database import integration_usage
+
+        if self._db_available and self._engine is not None:
+            with self._engine.connect() as conn:
+                row = conn.execute(
+                    select(integration_usage).where(integration_usage.c.user_id == str(user_id))
+                ).mappings().first()
+            if row is None:
+                return UsageStats()
+            return UsageStats(
+                llm_requests=row["llm_requests"],
+                github_requests=row["github_requests"],
+                prompt_tokens=row["prompt_tokens"],
+                completion_tokens=row["completion_tokens"],
+                total_tokens=row["total_tokens"],
+                updated_at=row["updated_at"],
+            )
+        with self._lock:
+            return self._usage.get(user_id, UsageStats())
 
     # ------------------------------------------------------------------
     # Helpers
@@ -435,6 +511,7 @@ class UserStore:
             self._password_hashes.clear()
             self._configs.clear()
             self._raw_configs.clear()
+            self._usage.clear()
 
 
 # ------------------------------------------------------------------

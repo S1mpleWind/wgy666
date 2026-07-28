@@ -58,6 +58,7 @@ import httpx
 from app.core.config import settings
 from app.core.effective_config import get_effective_config
 from app.services.repository_url import RepositoryRef
+from app.services.usage import record_integration_request
 
 
 class GitHubClientError(Exception):
@@ -190,6 +191,11 @@ class GitHubClient:
             "User-Agent": "wgy666-github-issue-analysis-platform",
         }
         cfg = get_effective_config()
+        if cfg.user_id and not cfg.github_token:
+            raise GitHubClientError(
+                "GitHub Token is not configured for the current user.",
+                status_code=503,
+            )
         if cfg.github_token:
             headers["Authorization"] = f"Bearer {cfg.github_token}"
 
@@ -441,6 +447,7 @@ class GitHubClient:
         """
         method_label = method.upper()
         max_retries = 3
+        record_integration_request("github")
 
         async def _call():
             return await self._client.request(method, path, json=json_data, params=params)

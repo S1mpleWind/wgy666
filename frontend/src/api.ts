@@ -358,6 +358,28 @@ export type SystemConfigUpdate = {
   clear_github_webhook_secret?: boolean
 }
 
+export type IntegrationConnection = {
+  status: 'connected' | 'configured' | 'failed' | 'not_configured'
+  message: string
+  checked_at: string
+  last_received_at: string | null
+}
+
+export type IntegrationStatus = {
+  llm: IntegrationConnection
+  github: IntegrationConnection
+  webhook: IntegrationConnection
+}
+
+export type UsageStats = {
+  llm_requests: number
+  github_requests: number
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  updated_at: string | null
+}
+
 async function userResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => null)
@@ -399,6 +421,16 @@ export async function updateUserConfig(payload: SystemConfigUpdate): Promise<Sys
     method: 'PATCH',
     body: JSON.stringify(payload),
   }))
+}
+
+/** Actively validate the current user's LLM, GitHub, and webhook integrations. */
+export async function fetchIntegrationStatus(): Promise<IntegrationStatus> {
+  return userResponse(await authFetch(`${API_BASE_URL}/api/users/me/integrations/status`))
+}
+
+/** Fetch accumulated external request and LLM token usage. */
+export async function fetchUsageStats(): Promise<UsageStats> {
+  return userResponse(await authFetch(`${API_BASE_URL}/api/users/me/usage`))
 }
 
 // Legacy aliases for backward compatibility

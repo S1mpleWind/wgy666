@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.core.effective_config import get_effective_config
 from app.services.embeddings import EmbeddingService
 from app.services.faq_service import _extract_keywords
+from app.services.usage import tracked_chat_completion
 
 router = APIRouter(prefix="/faq", tags=["faq"])
 logger = logging.getLogger(__name__)
@@ -174,8 +175,9 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
     snapshot = repository_store.get(owner, name)
     if not snapshot:
         raise HTTPException(status_code=404, detail="Repository not synced")
-    if not get_effective_config().llm_api_key:
-        raise HTTPException(status_code=503, detail="LLM is not configured")
+    cfg = get_effective_config()
+    if not cfg.llm_api_key or not cfg.llm_api_base_url or not cfg.llm_model:
+        raise HTTPException(status_code=503, detail="请先配置完整的 LLM API 地址、模型和 API Key。")
 
     # Group issues by category + keyword similarity.
     groups: dict[str, list[dict]] = {}
@@ -200,9 +202,12 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
         reason = f"仓库有 {all_issues} 个已关闭 Issue，但没有足够的相似 Issue 来聚类生成 FAQ（每组需 ≥ 2 个同类型 Issue）" if all_issues > 0 else "仓库暂无已关闭 Issue，无法自动生成 FAQ"
         return FaqAutoGenerateResponse(created=0, entries=[], reason=reason)
 
+    effective_config = get_effective_config()
+    if not effective_config.llm_api_key or not effective_config.llm_api_base_url or not effective_config.llm_model:
+        raise HTTPException(status_code=503, detail="请先配置完整的 LLM API 地址、模型和 API Key。")
     client = AsyncOpenAI(
-        api_key=get_effective_config().llm_api_key,
-        base_url=get_effective_config().llm_api_base_url,
+        api_key=effective_config.llm_api_key,
+        base_url=effective_config.llm_api_base_url,
     )
     from app.storage.database import faq_entries, create_database_engine, find_repository_id
     from sqlalchemy import insert
@@ -230,8 +235,9 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
         )
 
         try:
-            completion = await client.chat.completions.create(
-                model=get_effective_config().llm_model,
+            completion = await tracked_chat_completion(
+                client,
+                model=effective_config.llm_model,
                 messages=[
                     {"role": "system",
                      "content": "You are a FAQ generator. Summarise similar issues into one FAQ entry. Output JSON."},

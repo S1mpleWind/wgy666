@@ -27,6 +27,7 @@ class EffectiveConfig:
     llm_api_key: str | None = None
     github_token: str | None = None
     github_webhook_secret: str | None = None
+    user_id: str | None = None
 
 
 _current_config: ContextVar[EffectiveConfig | None] = ContextVar(
