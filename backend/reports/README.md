@@ -1,38 +1,42 @@
-# Unit Test Submission Reports
+# Issue 智能分类子系统单元测试
 
-## Test target
+## 测试对象
 
-The local project uses Python/FastAPI, so the equivalent of the requested
-`BankAccountTest.java` is
-`backend/tests/test_services/test_issue_classifier_unit.py`.
-The target is the project's `IssueClassifier` service.
+- 被测代码：`app/services/issue_classifier.py`
+- 测试代码：`tests/test_services/test_issue_classifier_unit.py`
+- 测试框架：pytest
+- Mock 工具：`unittest.mock.AsyncMock`
 
-## Mock test
+测试内容包括规则分类、空正文、未知类别、统计结果，以及 LLM 返回正常、返回异常和调用失败时的处理。
 
-`_classifier_with_mock_client()` replaces the asynchronous OpenAI client with
-`AsyncMock`. The tests verify a valid response, empty/invalid JSON, an invalid
-category, and an exception without making a network request.
+## 测试结果
 
-## Results
+- 单元测试：16 项通过
+- 语句总数：78
+- 未覆盖语句：1
+- 语句覆盖率：99%
+- 覆盖率要求：不低于 90%
 
-- Focused unit and Mock tests: 16 passed.
-- Target statement coverage: 99% for `app/services/issue_classifier.py`.
-- Performance test: 1,000 `IssueClassifier.classify` calls took 7.669 ms;
-  average 7.669 microseconds per call. See `performance.json`.
-- JUnit XML report: `junit-issue-classifier.xml`.
-- Statement coverage report: `coverage/app.services.issue_classifier.cover`.
+## 报告文件
 
-The full existing suite was also run: 154 passed, 5 skipped, and 8 existing
-tests failed. Those failures are outside this submission; the focused tests
-remain green.
+- `junit-issue-classifier.xml`：JUnit 测试报告
+- `coverage-summary.txt`：覆盖率摘要
+- `coverage.xml`：XML 格式覆盖率报告
+- `coverage-html/index.html`：HTML 覆盖率报告首页
 
-## Reproduction
+## 重新执行
+
+在 `backend` 目录运行：
 
 ```bash
-cd backend
-PYTHONPATH=. .venv/bin/pytest tests/test_services/test_issue_classifier_unit.py -q
-PYTHONPATH=. .venv/bin/python scripts/test_issue_classifier_performance.py
-PYTHONPATH=. .venv/bin/python -m trace --count --missing --summary \
-  --coverdir=reports/coverage --module pytest \
-  tests/test_services/test_issue_classifier_unit.py -q
+uv sync
+uv run pytest tests/test_services/test_issue_classifier_unit.py -q \
+  --junitxml=reports/junit-issue-classifier.xml \
+  --cov=app.services.issue_classifier \
+  --cov-report=term-missing \
+  --cov-report=html:reports/coverage-html \
+  --cov-report=xml:reports/coverage.xml \
+  --cov-fail-under=90
 ```
+
+当覆盖率低于 90% 或任意测试失败时，命令会返回失败。

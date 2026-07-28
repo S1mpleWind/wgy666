@@ -1,2 +1,13 @@
-lines   cov%   module   (path)
-  135    99%   app.services.issue_classifier   (/home/yangjunqi/wgy666/backend/app/services/issue_classifier.py)
+................                                                         [100%]
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.12.13-final-0 _______________
+
+Name                               Stmts   Miss  Cover   Missing
+----------------------------------------------------------------
+app/services/issue_classifier.py      78      1    99%   290
+----------------------------------------------------------------
+TOTAL                                 78      1    99%
+Coverage HTML written to dir reports/coverage-html
+Coverage XML written to file reports/coverage.xml
+Required test coverage of 90% reached. Total coverage: 98.72%
+16 passed in 0.91s
