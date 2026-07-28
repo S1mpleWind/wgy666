@@ -282,6 +282,18 @@ user_configs = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )
 
+integration_usage = Table(
+    "integration_usage",
+    metadata,
+    Column("user_id", String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("llm_requests", BigInteger, nullable=False, default=0),
+    Column("github_requests", BigInteger, nullable=False, default=0),
+    Column("prompt_tokens", BigInteger, nullable=False, default=0),
+    Column("completion_tokens", BigInteger, nullable=False, default=0),
+    Column("total_tokens", BigInteger, nullable=False, default=0),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
 
 def create_database_engine() -> Engine:
     if not settings.database_url:
