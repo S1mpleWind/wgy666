@@ -10,6 +10,7 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.core.effective_config import get_effective_config
 from app.services.embeddings import EmbeddingService
+from app.services.usage import tracked_chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,8 @@ async def faq_match(
                         candidates.append(dict(r))
 
             # ── Stage 2: LLM judgement on candidates ──────────────────
-            if candidates and get_effective_config().llm_api_key:
+            cfg = get_effective_config()
+            if candidates and cfg.llm_api_key and cfg.llm_api_base_url and cfg.llm_model:
                 match = await _llm_confirm(text_content, candidates)
                 if match:
                     _hit(conn, match["id"])
@@ -143,7 +145,8 @@ async def _llm_confirm(query: str, candidates: list[dict]) -> dict | None:
     )
 
     try:
-        completion = await client.chat.completions.create(
+        completion = await tracked_chat_completion(
+            client,
             model=cfg.llm_model,
             messages=[
                 {"role": "system", "content": "You match FAQ entries. Reply with only '1', '2', '3', or 'none'."},

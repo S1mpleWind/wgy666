@@ -56,7 +56,8 @@ class AutoFixService:
 
     def __init__(self) -> None:
         # 检查是否配置了 LLM API key，未配置则无法生成修复
-        self._llm_available = bool(get_effective_config().llm_api_key)
+        cfg = get_effective_config()
+        self._llm_available = bool(cfg.llm_api_key and cfg.llm_api_base_url and cfg.llm_model)
 
     async def fix_issue(self, owner, name, issue_number, issue_title, issue_body, labels) -> FixResult:
         """Full auto-fix pipeline: locate → generate → branch → commit → PR."""

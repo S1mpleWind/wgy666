@@ -97,24 +97,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     effective = EffectiveConfig(
                         llm_api_base_url=(
                             db_config.llm_api_base_url if db_config and db_config.llm_api_base_url
-                            else settings.llm_api_base_url
+                            else ""
                         ),
                         llm_model=(
                             db_config.llm_model if db_config and db_config.llm_model
-                            else settings.llm_model
+                            else ""
                         ),
                         llm_api_key=(
                             raw.get("llm_api_key") if raw
-                            else settings.llm_api_key
+                            else None
                         ),
                         github_token=(
                             raw.get("github_token") if raw
-                            else settings.github_token
+                            else None
                         ),
                         github_webhook_secret=(
                             raw.get("github_webhook_secret") if raw
-                            else settings.github_webhook_secret
+                            else None
                         ),
+                        user_id=str(db_user.id),
                     )
                     # Store user info in request state for route handlers
                     request.scope["user"] = db_user

@@ -19,6 +19,7 @@ from app.core.effective_config import get_effective_config
 from app.schemas.assistant import AssistantChatRequest, AssistantChatResponse
 from app.schemas.repository import RepositorySnapshot
 from app.services.repository_query import RepositoryQueryService
+from app.services.usage import tracked_chat_completion
 
 
 class AgentHarnessError(Exception):
@@ -42,17 +43,21 @@ class AgentHarness:
         self._cfg = get_effective_config()
         self.query = RepositoryQueryService()
         self.registry = RepositoryToolRegistry()
-        self.client = AsyncOpenAI(
-            api_key=self._cfg.llm_api_key or "missing-key",
-            base_url=self._cfg.llm_api_base_url,
+        self.client = (
+            AsyncOpenAI(
+                api_key=self._cfg.llm_api_key,
+                base_url=self._cfg.llm_api_base_url,
+            )
+            if self._cfg.llm_api_key and self._cfg.llm_api_base_url and self._cfg.llm_model
+            else None
         )
 
     # ── Public API ───────────────────────────────────────────────────
 
     async def answer(self, request: AssistantChatRequest) -> AssistantChatResponse:
         """Interactive Q&A — builds context from request, returns structured response."""
-        if not self._cfg.llm_api_key:
-            raise AgentHarnessError("LLM_API_KEY is not configured.", status_code=503)
+        if self.client is None:
+            raise AgentHarnessError("LLM configuration is incomplete for the current user.", status_code=503)
 
         snapshot, used_cached_data = await self.query.get_snapshot(
             request.owner, request.name, request.freshness,
@@ -90,11 +95,14 @@ class AgentHarness:
         """
         max_rounds = max_rounds or max(1, settings.assistant_max_tool_rounds)
         tool_results: list[ToolResult] = []
+        if self.client is None:
+            raise AgentHarnessError("LLM configuration is incomplete for the current user.", status_code=503)
 
         for round_index in range(max_rounds):
             # ── Call LLM ─────────────────────────────────────────────
             try:
-                completion = await self.client.chat.completions.create(
+                completion = await tracked_chat_completion(
+                    self.client,
                     model=self._cfg.llm_model,
                     messages=messages,
                     tools=self.registry.openai_tools(),
@@ -144,7 +152,8 @@ class AgentHarness:
 
         # ── Final LLM call after tool rounds exhausted ───────────────
         try:
-            final = await self.client.chat.completions.create(
+            final = await tracked_chat_completion(
+                self.client,
                 model=self._cfg.llm_model,
                 messages=messages,
             )

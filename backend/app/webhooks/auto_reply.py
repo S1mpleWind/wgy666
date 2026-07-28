@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.core.effective_config import get_effective_config
 from app.services.repository_query import RepositoryQueryService
+from app.services.usage import tracked_chat_completion
 
 
 @dataclass
@@ -54,7 +55,9 @@ class IssueAutoReplyService:
 
     def __init__(self) -> None:
         self._cfg = get_effective_config()
-        self._llm_available = bool(self._cfg.llm_api_key)
+        self._llm_available = bool(
+            self._cfg.llm_api_key and self._cfg.llm_api_base_url and self._cfg.llm_model
+        )
         if self._llm_available:
             self._client = AsyncOpenAI(
                 api_key=self._cfg.llm_api_key,
@@ -118,7 +121,8 @@ class IssueAutoReplyService:
         ]
 
         try:
-            completion = await self._client.chat.completions.create(
+            completion = await tracked_chat_completion(
+                self._client,
                 model=self._cfg.llm_model,
                 messages=messages,
                 temperature=0.7,

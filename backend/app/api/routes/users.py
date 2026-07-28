@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from app.core.security import create_access_token, get_current_user
 from app.schemas.user import (
     LoginRequest,
+    IntegrationStatus,
     TokenResponse,
+    UsageStats,
     User,
     UserConfig,
     UserConfigUpdate,
@@ -76,10 +78,9 @@ async def get_my_config(current_user: User = Depends(get_current_user)) -> UserC
     store = get_user_store()
     config = store.get_user_config(current_user.id)
     if config is None:
-        from app.core.config import settings
         return UserConfig(
-            llm_api_base_url=settings.llm_api_base_url,
-            llm_model=settings.llm_model,
+            llm_api_base_url="",
+            llm_model="",
             llm_api_key_configured=False,
             github_token_configured=False,
             github_webhook_secret_configured=False,
@@ -95,6 +96,22 @@ async def update_my_config(
     """Update the current user's integration config."""
     store = get_user_store()
     return store.upsert_user_config(current_user.id, payload)
+
+
+@router.get("/me/integrations/status", response_model=IntegrationStatus)
+async def get_my_integration_status(
+    _current_user: User = Depends(get_current_user),
+) -> IntegrationStatus:
+    """Actively validate LLM and GitHub credentials and report webhook readiness."""
+    from app.services.integration_health import check_integrations
+
+    return await check_integrations()
+
+
+@router.get("/me/usage", response_model=UsageStats)
+async def get_my_usage(current_user: User = Depends(get_current_user)) -> UsageStats:
+    """Return accumulated external API requests and LLM token usage."""
+    return get_user_store().get_usage(current_user.id)
 
 
 # ---------------------------------------------------------------------------
