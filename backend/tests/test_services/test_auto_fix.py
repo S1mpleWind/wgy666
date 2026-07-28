@@ -1,13 +1,15 @@
-"""Tests for the AutoFixService framework stub."""
+"""Tests for AutoFixService preconditions and result models."""
 
 from app.services.auto_fix import AutoFixService
 
 
-def test_fix_issue_returns_unsuccessful_when_repository_is_not_synced():
-    """fix_issue stops before GitHub mutations when the repository is absent."""
+def test_fix_issue_returns_error_when_repository_is_not_synced(monkeypatch):
+    """Auto-fix requires a synchronized repository snapshot."""
     import asyncio
+    import app.services.auto_fix as auto_fix_module
     from app.core.config import settings
 
+    monkeypatch.setattr(auto_fix_module.repository_store, "get", lambda owner, name: None)
     old_key = settings.llm_api_key
     settings.llm_api_key = "test-key"
     try:
@@ -111,7 +113,13 @@ def test_auto_fix_uses_repository_default_branch(monkeypatch):
     )
     repository_store.save(snapshot)
 
+    harness_calls = 0
+
     async def fake_harness_run(self, messages, snapshot, max_rounds=None):
+        nonlocal harness_calls
+        harness_calls += 1
+        if harness_calls == 1:
+            return ('{"file":"app.py","line":1,"description":"old output"}', [])
         return (
             "```json\n"
             '{"title":"fix: update app","pr_body":"Update app safely.",'

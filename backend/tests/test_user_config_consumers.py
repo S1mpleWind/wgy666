@@ -2,8 +2,23 @@
 
 import pytest
 
-from app.core.effective_config import EffectiveConfig, get_effective_config, set_effective_config
+from app.core.effective_config import (
+    EffectiveConfig,
+    get_effective_config,
+    reset_effective_config,
+    set_effective_config,
+)
 from app.core.config import settings
+
+
+@pytest.fixture(autouse=True)
+def isolate_effective_config():
+    """Prevent ContextVar values from leaking into later test modules."""
+    token = set_effective_config(None)
+    try:
+        yield
+    finally:
+        reset_effective_config(token)
 
 
 class TestEffectiveConfig:

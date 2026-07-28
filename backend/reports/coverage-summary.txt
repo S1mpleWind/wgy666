@@ -4,10 +4,10 @@ ______________ coverage: platform darwin, python 3.12.13-final-0 _______________
 
 Name                               Stmts   Miss  Cover   Missing
 ----------------------------------------------------------------
-app/services/issue_classifier.py      78      1    99%   290
+app/services/issue_classifier.py      79      2    97%   189, 294
 ----------------------------------------------------------------
-TOTAL                                 78      1    99%
+TOTAL                                 79      2    97%
 Coverage HTML written to dir reports/coverage-html
 Coverage XML written to file reports/coverage.xml
-Required test coverage of 90% reached. Total coverage: 98.72%
-16 passed in 0.91s
+Required test coverage of 90% reached. Total coverage: 97.47%
+16 passed in 1.14s

@@ -170,14 +170,10 @@ async def auto_generate_faq(owner: str, name: str) -> FaqAutoGenerateResponse:
     """Analyse synced issues and auto-generate FAQ entries from duplicates."""
     from app.storage import repository_store
     from openai import AsyncOpenAI
-    from app.core.config import settings
 
     snapshot = repository_store.get(owner, name)
     if not snapshot:
         raise HTTPException(status_code=404, detail="Repository not synced")
-    cfg = get_effective_config()
-    if not cfg.llm_api_key or not cfg.llm_api_base_url or not cfg.llm_model:
-        raise HTTPException(status_code=503, detail="请先配置完整的 LLM API 地址、模型和 API Key。")
 
     # Group issues by category + keyword similarity.
     groups: dict[str, list[dict]] = {}

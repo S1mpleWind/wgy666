@@ -514,6 +514,18 @@ class PostgresRepositoryStore:
                 statement,
                 {"owner": owner, "name": name, "embedding": embedding, "limit": limit},
             ).mappings().all()
+
+        # An IVFFlat index created on an empty or very small table can return
+        # no candidates until enough vectors have been indexed. Preserve the
+        # approximate fast path, but fall back to an exact scan for correctness.
+        if not rows:
+            with self.engine.begin() as connection:
+                connection.execute(text("SET LOCAL enable_indexscan = off"))
+                connection.execute(text("SET LOCAL enable_bitmapscan = off"))
+                rows = connection.execute(
+                    statement,
+                    {"owner": owner, "name": name, "embedding": embedding, "limit": limit},
+                ).mappings().all()
         return [dict(row) for row in rows]
 
     @staticmethod

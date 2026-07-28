@@ -360,7 +360,9 @@ class UserStore:
                     else current_cfg.llm_model if current_cfg
                     else ""
                 )
-                current_raw = (self._raw_configs.get(user_id) or {}) if hasattr(self, '_raw_configs') else {}
+                current_raw = (
+                    self._raw_configs.get(user_id) if hasattr(self, "_raw_configs") else None
+                ) or {}
                 api_key = (
                     None if payload.clear_llm_api_key
                     else payload.llm_api_key if payload.llm_api_key is not None
@@ -559,6 +561,7 @@ def get_user_store() -> UserStore:
             except Exception:
                 pass  # fall back to in-memory
         _user_store = UserStore()
+        _seed_admin(_user_store)
     return _user_store
 
 
