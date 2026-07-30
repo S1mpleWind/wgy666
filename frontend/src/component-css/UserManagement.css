@@ -27,7 +27,7 @@
 .config-actions p { margin: 0; color: var(--color-text-muted); font-size: 11px; }
 .config-loading { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 100px; color: var(--color-text-muted); font-size: 13px; }
 
-.connection-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.connection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .connection-card { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; min-height: 88px; padding: 13px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface-subtle); }
 .connection-card.connected { border-color: #a7d7bc; background: #f2fbf6; }
 .connection-card.failed { border-color: #efb1ad; background: #fff6f5; }
