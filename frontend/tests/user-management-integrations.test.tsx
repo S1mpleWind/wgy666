@@ -60,7 +60,8 @@ describe('integration status and usage panel', () => {
 
     expect(await screen.findByText('API 可访问')).toBeTruthy()
     expect(screen.getByText('已连接 GitHub：octocat')).toBeTruthy()
-    expect(screen.getByText('Secret 已配置，尚未收到 GitHub Webhook。')).toBeTruthy()
+    expect(screen.queryByText('Secret 已配置，尚未收到 GitHub Webhook。')).toBeNull()
+    expect(screen.queryByText('Webhook Secret')).toBeNull()
     expect(screen.getByText('1,500')).toBeTruthy()
     expect(screen.getByText('34')).toBeTruthy()
     expect(apiMocks.fetchIntegrationStatus).toHaveBeenCalledTimes(1)
@@ -86,7 +87,7 @@ describe('integration status and usage panel', () => {
     expect(await screen.findByText('请配置完整的 API 地址、模型和 API Key。')).toBeTruthy()
     expect((screen.getByPlaceholderText('https://api.example.com/v1') as HTMLInputElement).value).toBe('')
     expect((screen.getByPlaceholderText('模型名称') as HTMLInputElement).value).toBe('')
-    expect(screen.getAllByText('未配置').length).toBeGreaterThanOrEqual(3)
+    expect(screen.getAllByText('未配置').length).toBeGreaterThanOrEqual(2)
   })
 
   it('labels administrator user actions with visible edit and delete text', async () => {

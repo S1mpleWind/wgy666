@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { Activity, AlertCircle, BarChart3, Check, GitBranch, KeyRound, Loader2, LogOut, Pencil, RefreshCw, Save, Shield, Trash2, UserRound, Users, Webhook, X } from 'lucide-react'
+import { Activity, AlertCircle, BarChart3, Check, GitBranch, KeyRound, Loader2, LogOut, Pencil, RefreshCw, Save, Shield, Trash2, UserRound, Users, X } from 'lucide-react'
 
 import { deleteUser, fetchIntegrationStatus, fetchUsageStats, fetchUserConfig, fetchUsers, updateUser, updateUserConfig } from '../api'
 import type { IntegrationConnection, IntegrationStatus, SystemConfig, SystemConfigUpdate, UsageStats, User } from '../api'
@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 import '../component-css/UserManagement.css'
 
 const emptyForm = { name: '', email: '' }
-const emptySecrets = { llm_api_key: '', github_token: '', github_webhook_secret: '' }
+const emptySecrets = { llm_api_key: '', github_token: '' }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败，请稍后重试。'
@@ -96,7 +96,6 @@ export function UserManagement() {
     }
     if (configForm.llm_api_key) payload.llm_api_key = configForm.llm_api_key
     if (configForm.github_token) payload.github_token = configForm.github_token
-    if (configForm.github_webhook_secret) payload.github_webhook_secret = configForm.github_webhook_secret
     try {
       setConfig(await updateUserConfig(payload))
       setConfigForm((current) => ({ ...current, ...emptySecrets }))
@@ -109,8 +108,8 @@ export function UserManagement() {
     }
   }
 
-  async function clearSecret(field: 'llm_api_key' | 'github_token' | 'github_webhook_secret') {
-    const labels = { llm_api_key: 'LLM API Key', github_token: 'GitHub Token', github_webhook_secret: 'Webhook Secret' }
+  async function clearSecret(field: 'llm_api_key' | 'github_token') {
+    const labels = { llm_api_key: 'LLM API Key', github_token: 'GitHub Token' }
     if (!window.confirm(`确定清除 ${labels[field]} 吗？`)) return
     setConfigSaving(true)
     setError(null)
@@ -223,14 +222,12 @@ export function UserManagement() {
             </label>
             <SecretField label="LLM API Key" configured={config?.llm_api_key_configured ?? false} value={configForm.llm_api_key} onChange={(value) => setConfigForm({ ...configForm, llm_api_key: value })} onClear={() => clearSecret('llm_api_key')} />
             <SecretField label="GitHub Token" configured={config?.github_token_configured ?? false} value={configForm.github_token} onChange={(value) => setConfigForm({ ...configForm, github_token: value })} onClear={() => clearSecret('github_token')} />
-            <SecretField label="Webhook Secret" configured={config?.github_webhook_secret_configured ?? false} value={configForm.github_webhook_secret} onChange={(value) => setConfigForm({ ...configForm, github_webhook_secret: value })} onClear={() => clearSecret('github_webhook_secret')} icon="webhook" />
           </div>
         )}
 
         <div className="connection-grid" aria-label="集成连接状态">
           <ConnectionCard label="LLM API" icon={<Activity size={17} />} connection={integrationStatus?.llm} loading={checkingConnections} />
           <ConnectionCard label="GitHub" icon={<GitBranch size={17} />} connection={integrationStatus?.github} loading={checkingConnections} />
-          <ConnectionCard label="Webhook" icon={<Webhook size={17} />} connection={integrationStatus?.webhook} loading={checkingConnections} />
         </div>
 
         <div className="config-actions">
@@ -334,14 +331,13 @@ type SecretFieldProps = {
   value: string
   onChange: (value: string) => void
   onClear: () => void
-  icon?: 'webhook'
 }
 
-function SecretField({ label, configured, value, onChange, onClear, icon }: SecretFieldProps) {
+function SecretField({ label, configured, value, onChange, onClear }: SecretFieldProps) {
   return (
     <label className="secret-field">
       <span className="secret-label">
-        <span>{icon === 'webhook' ? <Webhook size={14} /> : <KeyRound size={14} />}{label}</span>
+        <span><KeyRound size={14} />{label}</span>
         <span className={configured ? 'secret-status configured' : 'secret-status'}>{configured ? '已配置' : '未配置'}</span>
       </span>
       <span className="secret-input-row">
