@@ -1,0 +1,208 @@
+/* -- MetricCard: Metric / Panel / CategoryBars / CompactList --------------- */
+
+.metric-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metric,
+.panel {
+  background: #ffffff;
+  border: 1px solid #dde4ea;
+  border-radius: 8px;
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.metric {
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  min-height: 88px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.metric::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--color-primary);
+  opacity: 0.7;
+}
+
+.metric-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f5ef;
+  color: #18794e;
+  width: 36px;
+  height: 36px;
+  color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.metric p {
+  margin: 0;
+  color: #6a747e;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.metric strong {
+  font-size: 24px;
+  color: var(--color-text);
+  font-size: 22px;
+}
+
+.panel {
+  padding: 18px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.panel h3 {
+  margin: 0;
+  margin-bottom: 16px;
+  font-size: 16px;
+  color: var(--color-text);
+  font-size: 15px;
+}
+
+.bars {
+  display: grid;
+  gap: 13px;
+}
+
+.bar-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: #3d4852;
+  margin-bottom: 6px;
+}
+
+.bar-track {
+  height: 9px;
+  border-radius: 999px;
+  background: #edf1f5;
+  overflow: hidden;
+}
+
+.bar-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2d6cdf, #18a058);
+}
+
+.bar-track span,
+.confidence-bar span {
+  background: var(--color-primary);
+}
+
+.compact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.compact-list a {
+  border: 1px solid #e5ebf0;
+  border-radius: 7px;
+  color: inherit;
+  display: grid;
+  gap: 5px;
+  padding: 11px 12px;
+  text-decoration: none;
+  background: var(--color-surface);
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.compact-list a:hover {
+  border-color: #a9bfd5;
+  background: #f9fbfd;
+  border-color: #a8bfd9;
+  background: var(--color-surface-blue);
+}
+
+.compact-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-list span {
+  color: #6a747e;
+  font-size: 13px;
+}
+
+/* -- Issues summary (lives in App.tsx but uses MetricCard styles) --------- */
+
+.issues-summary {
+  display: grid;
+  gap: 14px;
+  gap: 16px;
+}
+
+.panel-header-with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-header-with-actions h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.issues-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 150px));
+}
+
+.issues-summary-card {
+  background: #f6f8fa;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  padding: 13px 15px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  background: var(--color-surface-subtle);
+}
+
+.issues-summary-card strong {
+  display: block;
+  font-size: 28px;
+  line-height: 1.2;
+  color: #182027;
+  font-size: 24px;
+}
+
+.issues-summary-card span {
+  font-size: 12px;
+  color: #6a747e;
+  margin-top: 2px;
+}
+
+.issues-summary-card.closed strong {
+  color: #6a747e;
+}

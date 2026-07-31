@@ -1,0 +1,369 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="8" skipped="5" tests="167" time="45.691" timestamp="2026-07-27T15:06:43.973339+08:00" hostname="yjqY9000P"><testcase classname="tests.test_assistant.test_database_vector_integration" name="test_assistant_reads_postgres_snapshot_and_vector_searches" time="0.000"><skipped type="pytest.skip" message="DATABASE_URL is required for assistant database/vector integration tests.">/home/yangjunqi/wgy666/backend/tests/test_assistant/test_database_vector_integration.py:28: DATABASE_URL is required for assistant database/vector integration tests.</skipped></testcase><testcase classname="tests.test_assistant.test_router" name="test_assistant_lists_bug_issues_from_cached_repository" time="0.000"><skipped type="pytest.skip" message="LLM_API_KEY is required for real assistant API integration tests.">/home/yangjunqi/wgy666/backend/tests/test_assistant/test_router.py:101: LLM_API_KEY is required for real assistant API integration tests.</skipped></testcase><testcase classname="tests.test_assistant.test_router" name="test_assistant_returns_project_structure_tool_result" time="0.000"><skipped type="pytest.skip" message="LLM_API_KEY is required for real assistant API integration tests.">/home/yangjunqi/wgy666/backend/tests/test_assistant/test_router.py:125: LLM_API_KEY is required for real assistant API integration tests.</skipped></testcase><testcase classname="tests.test_assistant.test_router" name="test_repository_tool_endpoint_lists_files" time="0.022" /><testcase classname="tests.test_assistant.test_router" name="test_assistant_chat_uses_real_llm_api_when_configured" time="0.000"><skipped type="pytest.skip" message="LLM_API_KEY is required for real assistant API integration tests.">/home/yangjunqi/wgy666/backend/tests/test_assistant/test_router.py:162: LLM_API_KEY is required for real assistant API integration tests.</skipped></testcase><testcase classname="tests.test_effective_config_middleware" name="test_authenticated_request_uses_user_config_and_then_resets" time="0.015" /><testcase classname="tests.test_project_analysis" name="test_tiny_web_language_share_does_not_make_python_project_full_stack" time="0.000" /><testcase classname="tests.test_project_analysis" name="test_meaningful_python_and_frontend_shares_are_full_stack" time="0.000" /><testcase classname="tests.test_project_analysis" name="test_entry_candidates_only_include_source_files_outside_example_and_test_directories" time="0.000" /><testcase classname="tests.test_project_analysis" name="test_entry_candidates_prioritize_conventional_application_directories" time="0.000" /><testcase classname="tests.test_project_analysis" name="test_analysis_combines_sampled_tree_with_complete_indexed_files" time="0.000" /><testcase classname="tests.test_project_analysis" name="test_analysis_parses_python_and_node_dependency_manifests" time="0.001" /><testcase classname="tests.test_project_analysis" name="test_project_structure_endpoint_returns_cached_backend_analysis" time="0.018" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_python_symbols_routes_imports_and_tests_are_connected" time="0.002" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_test_mapping_excludes_support_files" time="0.001" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_health_detects_cycles_and_missing_test_links" time="0.001" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_impact_traces_importers_routes_and_recommended_tests" time="0.001" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_impact_does_not_expand_through_sibling_symbols" time="0.001" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_duplicate_module_aliases_resolve_within_same_source_root" time="0.001" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_impact_resolves_chinese_issue_domain_terms_and_handles_no_match" time="0.001" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_diff_reports_changed_symbols_routes_and_dependencies" time="0.001" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_architecture_endpoints_return_history_and_impact" time="0.029" /><testcase classname="tests.test_services.test_architecture_analysis" name="test_same_revision_refreshes_when_indexed_source_count_changes" time="0.001" /><testcase classname="tests.test_services.test_auto_fix" name="test_fix_issue_returns_unsuccessful_when_repository_is_not_synced" time="0.001" /><testcase classname="tests.test_services.test_auto_fix" name="test_fix_issue_returns_error_when_no_llm" time="0.000" /><testcase classname="tests.test_services.test_auto_fix" name="test_fix_proposal_dataclass" time="0.000" /><testcase classname="tests.test_services.test_auto_fix" name="test_auto_fix_uses_repository_default_branch" time="0.061" /><testcase classname="tests.test_services.test_embeddings" name="test_hash_embedding_returns_deterministic_vector" time="11.370" /><testcase classname="tests.test_services.test_embeddings" name="test_hash_embedding_different_texts_differ" time="3.340" /><testcase classname="tests.test_services.test_embeddings" name="test_hash_embedding_unit_vector" time="1.866" /><testcase classname="tests.test_services.test_embeddings" name="test_embed_texts_empty" time="0.002"><failure message="assert 0 == 1&#10; +  where 0 = len([])">def test_embed_texts_empty():
+        """Empty input returns empty list."""
+        service = EmbeddingService()
+        result = service.embed_texts([])
+        assert result == []          # correct
+&gt;       assert len(result) == 1      # BUG: empty list should have length 0, not 1
+        ^^^^^^^^^^^^^^^^^^^^^^^
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests/test_services/test_embeddings.py:36: AssertionError</failure></testcase><testcase classname="tests.test_services.test_embeddings" name="test_embed_texts_multiple" time="1.865" /><testcase classname="tests.test_services.test_faq_generate" name="test_faq_generate_reason_no_issues" time="0.001" /><testcase classname="tests.test_services.test_faq_generate" name="test_faq_generate_reason_insufficient" time="0.001" /><testcase classname="tests.test_services.test_faq_memory" name="test_faq_crud_is_scoped_to_repository" time="2.823" /><testcase classname="tests.test_services.test_faq_memory" name="test_faq_matching_does_not_cross_repositories" time="2.604" /><testcase classname="tests.test_services.test_faq_memory" name="test_fix_memory_is_persisted_and_scoped" time="0.277" /><testcase classname="tests.test_services.test_faq_memory" name="test_faq_rows_always_have_repository_id" time="2.554" /><testcase classname="tests.test_services.test_faq_memory" name="test_faq_generate_reason_no_issues" time="0.001" /><testcase classname="tests.test_services.test_faq_memory" name="test_faq_generate_reason_insufficient" time="0.001" /><testcase classname="tests.test_services.test_git_clone_security" name="test_walk_and_read_skip_symbolic_links" time="0.002" /><testcase classname="tests.test_services.test_git_clone_security" name="test_read_file_rejects_parent_directory_escape" time="0.002" /><testcase classname="tests.test_services.test_git_clone_security" name="test_walk_keeps_regular_files" time="0.002" /><testcase classname="tests.test_services.test_issue_classifier" name="test_classify_bug_by_keyword" time="0.017" /><testcase classname="tests.test_services.test_issue_classifier" name="test_classify_question_by_keyword" time="0.013" /><testcase classname="tests.test_services.test_issue_classifier" name="test_classify_unknown_when_no_match" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier" name="test_classify_empty_body_gets_info_needed" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier" name="test_classify_labels_get_double_weight" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier" name="test_classify_returns_signals" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier" name="test_classify_returns_suggested_action" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier" name="test_async_classify_rules_only_when_confident" time="3.823" /><testcase classname="tests.test_services.test_issue_classifier" name="test_async_classify_falls_back_to_rules_on_llm_failure" time="0.001" /><testcase classname="tests.test_services.test_issue_classifier" name="test_async_classify_passes_through_confident_rules" time="4.805" /><testcase classname="tests.test_services.test_issue_classifier" name="test_async_classify_calls_llm_when_available" time="0.017" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_bug_with_weighted_label_signal" time="0.013" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_covers_rule_categories[Please add export support-A feature request-labels0-feature_request]" time="0.013" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_covers_rule_categories[How to configure this?--labels1-question]" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_covers_rule_categories[Update README guide-Documentation typo-labels2-documentation]" time="0.017" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_covers_rule_categories[Same as #12-duplicate issue-labels3-duplicate]" time="0.015" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_covers_rule_categories[Refactor dependency cleanup--labels4-maintenance]" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_covers_rule_categories[-None-labels5-info_needed]" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_covers_rule_categories[wontfix-invalid request-labels6-invalid]" time="0.015" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_classify_covers_rule_categories[Unexpected wording-No matching terms here-labels7-unknown]" time="0.015" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_empty_body_only_signal_has_low_confidence" time="0.015" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_summarize_sorts_by_frequency" time="0.016" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_async_classify_uses_mocked_llm_response" time="0.016" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_async_classify_falls_back_for_invalid_mock_response[None]" time="0.015" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_async_classify_falls_back_for_invalid_mock_response[not-json]" time="0.014" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_async_classify_falls_back_for_invalid_mock_response[{&quot;category&quot;:&quot;not-valid&quot;}]" time="0.015" /><testcase classname="tests.test_services.test_issue_classifier_unit" name="test_async_classify_falls_back_when_mocked_llm_raises" time="0.014" /><testcase classname="tests.test_services.test_knowledge_graph" name="test_knowledge_graph_builds_structure_dependency_and_test_chunks" time="0.001" /><testcase classname="tests.test_services.test_knowledge_graph" name="test_knowledge_graph_search_supports_chinese_focus_terms" time="0.001" /><testcase classname="tests.test_services.test_repository_api" name="test_cached_snapshot_response_does_not_include_source_bodies" time="0.007" /><testcase classname="tests.test_services.test_repository_sync" name="test_source_content_filtering_excludes_assets" time="0.000" /><testcase classname="tests.test_services.test_repository_sync" name="test_source_content_filtering_respects_size_limit" time="0.000" /><testcase classname="tests.test_services.test_repository_tools" name="test_get_file_contents_empty_when_not_synced" time="0.000" /><testcase classname="tests.test_services.test_repository_tools" name="test_get_file_contents_returns_source_files" time="0.001" /><testcase classname="tests.test_services.test_repository_tools" name="test_get_file_content_by_path" time="0.000" /><testcase classname="tests.test_services.test_repository_tools" name="test_get_file_content_nonexistent_path" time="0.000" /><testcase classname="tests.test_storage.test_postgres_store" name="test_postgres_store_saves_and_loads_repository_snapshot" time="0.000"><skipped type="pytest.skip" message="DATABASE_URL is required for PostgreSQL storage integration tests.">/home/yangjunqi/wgy666/backend/tests/test_storage/test_postgres_store.py:29: DATABASE_URL is required for PostgreSQL storage integration tests.</skipped></testcase><testcase classname="tests.test_user_config_consumers.TestEffectiveConfig" name="test_default_falls_back_to_settings" time="0.000" /><testcase classname="tests.test_user_config_consumers.TestEffectiveConfig" name="test_set_and_get" time="0.000" /><testcase classname="tests.test_user_config_consumers.TestEffectiveConfig" name="test_none_values_preserved" time="0.000" /><testcase classname="tests.test_user_config_consumers" name="test_effective_config_reaches_assistant_and_github" time="0.001" /><testcase classname="tests.test_users" name="test_register_and_login" time="0.486" /><testcase classname="tests.test_users" name="test_register_duplicate_email" time="0.381" /><testcase classname="tests.test_users" name="test_login_invalid_credentials" time="0.383" /><testcase classname="tests.test_users" name="test_admin_seeded_on_startup" time="0.015"><failure message="AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x7acc974ce7b0&gt;
+
+    def test_admin_seeded_on_startup(client: TestClient):
+        """The default admin user is created automatically."""
+&gt;       token = _login_as_admin(client)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_users.py:125: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+client = &lt;starlette.testclient.TestClient object at 0x7acc974ce7b0&gt;
+
+    def _login_as_admin(client: TestClient) -&gt; str:
+        """Login as the default admin and return the access token."""
+        resp = client.post("/api/auth/login", json={
+            "email": DEFAULT_ADMIN_EMAIL,
+            "password": DEFAULT_ADMIN_PASSWORD,
+        })
+&gt;       assert resp.status_code == 200, f"Admin login failed: {resp.json()}"
+E       AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}
+E       assert 401 == 200
+E        +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code
+
+tests/test_users.py:58: AssertionError</failure></testcase><testcase classname="tests.test_users" name="test_unauthenticated_access_blocked" time="0.021" /><testcase classname="tests.test_users" name="test_non_admin_cannot_list_users" time="0.182" /><testcase classname="tests.test_users" name="test_non_admin_cannot_delete_users" time="0.185" /><testcase classname="tests.test_users" name="test_admin_can_list_users" time="0.186"><failure message="AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x7acc97dd3410&gt;
+
+    def test_admin_can_list_users(client: TestClient):
+        """Admin can list all users."""
+        _register_user(client, "Alice", "alice@example.com")
+&gt;       token = _login_as_admin(client)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_users.py:171: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+client = &lt;starlette.testclient.TestClient object at 0x7acc97dd3410&gt;
+
+    def _login_as_admin(client: TestClient) -&gt; str:
+        """Login as the default admin and return the access token."""
+        resp = client.post("/api/auth/login", json={
+            "email": DEFAULT_ADMIN_EMAIL,
+            "password": DEFAULT_ADMIN_PASSWORD,
+        })
+&gt;       assert resp.status_code == 200, f"Admin login failed: {resp.json()}"
+E       AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}
+E       assert 401 == 200
+E        +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code
+
+tests/test_users.py:58: AssertionError</failure></testcase><testcase classname="tests.test_users" name="test_admin_can_get_user" time="0.202"><failure message="AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x7acc9755f380&gt;
+
+    def test_admin_can_get_user(client: TestClient):
+        """Admin can get a specific user by ID."""
+        data = _register_user(client, "Bob", "bob@example.com")
+        user_id = data["user"]["id"]
+    
+&gt;       token = _login_as_admin(client)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_users.py:186: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+client = &lt;starlette.testclient.TestClient object at 0x7acc9755f380&gt;
+
+    def _login_as_admin(client: TestClient) -&gt; str:
+        """Login as the default admin and return the access token."""
+        resp = client.post("/api/auth/login", json={
+            "email": DEFAULT_ADMIN_EMAIL,
+            "password": DEFAULT_ADMIN_PASSWORD,
+        })
+&gt;       assert resp.status_code == 200, f"Admin login failed: {resp.json()}"
+E       AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}
+E       assert 401 == 200
+E        +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code
+
+tests/test_users.py:58: AssertionError</failure></testcase><testcase classname="tests.test_users" name="test_admin_can_delete_user" time="0.203"><failure message="AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x7acc97f5c2c0&gt;
+
+    def test_admin_can_delete_user(client: TestClient):
+        """Admin can delete a user."""
+        data = _register_user(client, "Charlie", "charlie@example.com")
+        user_id = data["user"]["id"]
+    
+&gt;       token = _login_as_admin(client)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_users.py:199: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+client = &lt;starlette.testclient.TestClient object at 0x7acc97f5c2c0&gt;
+
+    def _login_as_admin(client: TestClient) -&gt; str:
+        """Login as the default admin and return the access token."""
+        resp = client.post("/api/auth/login", json={
+            "email": DEFAULT_ADMIN_EMAIL,
+            "password": DEFAULT_ADMIN_PASSWORD,
+        })
+&gt;       assert resp.status_code == 200, f"Admin login failed: {resp.json()}"
+E       AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}
+E       assert 401 == 200
+E        +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code
+
+tests/test_users.py:58: AssertionError</failure></testcase><testcase classname="tests.test_users" name="test_admin_cannot_delete_self" time="0.016"><failure message="AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code">client = &lt;starlette.testclient.TestClient object at 0x7acc974f3020&gt;
+
+    def test_admin_cannot_delete_self(client: TestClient):
+        """Admin cannot delete their own account."""
+&gt;       token = _login_as_admin(client)
+                ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_users.py:208: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+client = &lt;starlette.testclient.TestClient object at 0x7acc974f3020&gt;
+
+    def _login_as_admin(client: TestClient) -&gt; str:
+        """Login as the default admin and return the access token."""
+        resp = client.post("/api/auth/login", json={
+            "email": DEFAULT_ADMIN_EMAIL,
+            "password": DEFAULT_ADMIN_PASSWORD,
+        })
+&gt;       assert resp.status_code == 200, f"Admin login failed: {resp.json()}"
+E       AssertionError: Admin login failed: {'detail': 'Invalid email or password.'}
+E       assert 401 == 200
+E        +  where 401 = &lt;Response [401 Unauthorized]&gt;.status_code
+
+tests/test_users.py:58: AssertionError</failure></testcase><testcase classname="tests.test_users" name="test_user_can_update_own_profile" time="0.204" /><testcase classname="tests.test_users" name="test_user_cannot_update_others_profile" time="0.525" /><testcase classname="tests.test_users" name="test_per_user_config" time="0.367"><failure message="AttributeError: 'NoneType' object has no attribute 'get'">client = &lt;starlette.testclient.TestClient object at 0x7acc97dd3b90&gt;
+
+    def test_per_user_config(client: TestClient):
+        """Test that each user has their own isolated config."""
+        r1 = client.post("/api/auth/register", json={
+            "name": "U1", "email": "u1@example.com", "password": "pw123456",
+        })
+        r2 = client.post("/api/auth/register", json={
+            "name": "U2", "email": "u2@example.com", "password": "pw123456",
+        })
+        t1 = r1.json()["access_token"]
+        t2 = r2.json()["access_token"]
+        h1 = {"Authorization": f"Bearer {t1}"}
+        h2 = {"Authorization": f"Bearer {t2}"}
+    
+        # User 1 sets their config
+&gt;       resp = client.patch("/api/users/me/config", json={
+            "llm_api_base_url": "https://u1.example.com/v1",
+            "llm_model": "u1-model",
+            "llm_api_key": "u1-key",
+            "github_token": "u1-token",
+        }, headers=h1)
+
+tests/test_users.py:262: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/starlette/testclient.py:617: in patch
+    return super().patch(
+.venv/lib/python3.12/site-packages/httpx/_client.py:1218: in patch
+    return self.request(
+.venv/lib/python3.12/site-packages/starlette/testclient.py:454: in request
+    return super().request(
+.venv/lib/python3.12/site-packages/httpx/_client.py:825: in request
+    return self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/httpx/_client.py:914: in send
+    response = self._send_handling_auth(
+.venv/lib/python3.12/site-packages/httpx/_client.py:942: in _send_handling_auth
+    response = self._send_handling_redirects(
+.venv/lib/python3.12/site-packages/httpx/_client.py:979: in _send_handling_redirects
+    response = self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/httpx/_client.py:1014: in _send_single_request
+    response = transport.handle_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/starlette/testclient.py:356: in handle_request
+    raise exc
+.venv/lib/python3.12/site-packages/starlette/testclient.py:353: in handle_request
+    portal.call(self.app, scope, receive, send)
+.venv/lib/python3.12/site-packages/anyio/from_thread.py:338: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/concurrent/futures/_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+.venv/lib/python3.12/site-packages/anyio/from_thread.py:263: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/fastapi/applications.py:1163: in __call__
+    await super().__call__(scope, receive, send)
+.venv/lib/python3.12/site-packages/starlette/applications.py:90: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv/lib/python3.12/site-packages/starlette/middleware/errors.py:186: in __call__
+    raise exc
+.venv/lib/python3.12/site-packages/starlette/middleware/errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+.venv/lib/python3.12/site-packages/starlette/middleware/base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/core/security.py:127: in dispatch
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/starlette/middleware/base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+.venv/lib/python3.12/site-packages/starlette/middleware/base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+.venv/lib/python3.12/site-packages/starlette/middleware/cors.py:88: in __call__
+    await self.app(scope, receive, send)
+.venv/lib/python3.12/site-packages/starlette/middleware/exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+.venv/lib/python3.12/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv/lib/python3.12/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+.venv/lib/python3.12/site-packages/starlette/routing.py:660: in __call__
+    await self.middleware_stack(scope, receive, send)
+.venv/lib/python3.12/site-packages/fastapi/routing.py:2683: in app
+    await route.handle(scope, receive, send)
+.venv/lib/python3.12/site-packages/fastapi/routing.py:1753: in handle
+    await self.original_router.handle(scope, receive, send)
+.venv/lib/python3.12/site-packages/fastapi/routing.py:2738: in handle
+    await included_router._handle_selected(scope, receive, send)
+.venv/lib/python3.12/site-packages/fastapi/routing.py:1773: in _handle_selected
+    await original_route.handle(scope, receive, send)
+.venv/lib/python3.12/site-packages/fastapi/routing.py:1264: in handle
+    await app(scope, receive, send)
+.venv/lib/python3.12/site-packages/fastapi/routing.py:150: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+.venv/lib/python3.12/site-packages/starlette/_exception_handler.py:53: in wrapped_app
+    raise exc
+.venv/lib/python3.12/site-packages/starlette/_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+.venv/lib/python3.12/site-packages/fastapi/routing.py:136: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/fastapi/routing.py:690: in app
+    raw_response = await run_endpoint_function(
+.venv/lib/python3.12/site-packages/fastapi/routing.py:344: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/api/routes/users.py:97: in update_my_config
+    return store.upsert_user_config(current_user.id, payload)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;app.storage.users.UserStore object at 0x7acc9755fad0&gt;
+user_id = UUID('7bdc5446-4bef-449a-b895-3e6dc97aa21d')
+payload = UserConfigUpdate(llm_api_base_url='https://u1.example.com/v1', llm_model='u1-model', llm_api_key='u1-key', github_toke...ken', github_webhook_secret=None, clear_llm_api_key=False, clear_github_token=False, clear_github_webhook_secret=False)
+
+    def upsert_user_config(self, user_id: UUID, payload: UserConfigUpdate) -&gt; UserConfig:
+        """Create or update the config for a user. Returns the public config."""
+        from app.storage.database import user_configs as configs_table
+        from app.core.config import settings as server_settings
+    
+        if self._db_available and self._engine is not None:
+            with self._engine.begin() as conn:
+                existing = conn.execute(
+                    select(configs_table).where(configs_table.c.user_id == str(user_id))
+                ).mappings().first()
+    
+                now = datetime.now(timezone.utc)
+    
+                if existing is None:
+                    # Insert new config
+                    base_url = (
+                        payload.llm_api_base_url
+                        if payload.llm_api_base_url is not None
+                        else server_settings.llm_api_base_url
+                    )
+                    model = (
+                        payload.llm_model
+                        if payload.llm_model is not None
+                        else server_settings.llm_model
+                    )
+                    conn.execute(
+                        insert(configs_table).values(
+                            user_id=str(user_id),
+                            llm_api_base_url=base_url,
+                            llm_model=model,
+                            llm_api_key=payload.llm_api_key,
+                            github_token=payload.github_token,
+                            github_webhook_secret=payload.github_webhook_secret,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                    )
+                else:
+                    # Update existing config
+                    update_values: dict = {"updated_at": now}
+                    if payload.llm_api_base_url is not None:
+                        update_values["llm_api_base_url"] = payload.llm_api_base_url
+                    if payload.llm_model is not None:
+                        update_values["llm_model"] = payload.llm_model
+    
+                    if payload.clear_llm_api_key:
+                        update_values["llm_api_key"] = None
+                    elif payload.llm_api_key is not None:
+                        update_values["llm_api_key"] = payload.llm_api_key
+    
+                    if payload.clear_github_token:
+                        update_values["github_token"] = None
+                    elif payload.github_token is not None:
+                        update_values["github_token"] = payload.github_token
+    
+                    if payload.clear_github_webhook_secret:
+                        update_values["github_webhook_secret"] = None
+                    elif payload.github_webhook_secret is not None:
+                        update_values["github_webhook_secret"] = payload.github_webhook_secret
+    
+                    conn.execute(
+                        update(configs_table)
+                        .where(configs_table.c.user_id == str(user_id))
+                        .values(**update_values)
+                    )
+    
+        else:
+            # In-memory fallback
+            with self._lock:
+                now = datetime.now(timezone.utc)
+                base_url = (
+                    payload.llm_api_base_url
+                    if payload.llm_api_base_url is not None
+                    else server_settings.llm_api_base_url
+                )
+                model = (
+                    payload.llm_model
+                    if payload.llm_model is not None
+                    else server_settings.llm_model
+                )
+                current_cfg = self._configs.get(user_id)
+                current_raw = self._raw_configs.get(user_id) if hasattr(self, '_raw_configs') else {}
+                api_key = (
+                    None if payload.clear_llm_api_key
+                    else payload.llm_api_key if payload.llm_api_key is not None
+                    else current_raw.get("llm_api_key")
+                )
+                gh_token = (
+                    None if payload.clear_github_token
+                    else payload.github_token if payload.github_token is not None
+                    else current_raw.get("github_token")
+                )
+                gh_secret = (
+                    None if payload.clear_github_webhook_secret
+                    else payload.github_webhook_secret if payload.github_webhook_secret is not None
+&gt;                   else current_raw.get("github_webhook_secret")
+                         ^^^^^^^^^^^^^^^
+                )
+E               AttributeError: 'NoneType' object has no attribute 'get'
+
+app/storage/users.py:375: AttributeError</failure></testcase><testcase classname="tests.test_users" name="test_config_clear_secrets" time="0.222" /><testcase classname="tests.test_users" name="test_config_rejects_invalid_url" time="0.211" /><testcase classname="tests.test_webhooks.test_auto_reply" name="test_generate_reply_returns_none_when_llm_not_configured" time="0.001" /><testcase classname="tests.test_webhooks.test_auto_reply" name="test_generate_reply_graceful_on_api_failure" time="0.001" /><testcase classname="tests.test_webhooks.test_auto_reply" name="test_propose_fix_pr_returns_none" time="0.000" /><testcase classname="tests.test_webhooks.test_auto_reply" name="test_service_initialization" time="0.001"><failure message="assert False is True&#10; +  where False = &lt;app.webhooks.auto_reply.IssueAutoReplyService object at 0x7acc95c639b0&gt;._llm_available">def test_service_initialization():
+        """Service initializes based on LLM_API_KEY presence."""
+        old_key = settings.llm_api_key
+    
+        settings.llm_api_key = None
+        s1 = IssueAutoReplyService()
+        assert s1._llm_available is False
+    
+        settings.llm_api_key = "some-key"
+        s2 = IssueAutoReplyService()
+&gt;       assert s2._llm_available is True
+E       assert False is True
+E        +  where False = &lt;app.webhooks.auto_reply.IssueAutoReplyService object at 0x7acc95c639b0&gt;._llm_available
+
+tests/test_webhooks/test_auto_reply.py:80: AssertionError</failure></testcase><testcase classname="tests.test_webhooks.test_concurrency" name="test_concurrent_webhooks_same_repo" time="0.035" /><testcase classname="tests.test_webhooks.test_concurrency" name="test_concurrent_reads_and_writes_do_not_conflict" time="0.033" /><testcase classname="tests.test_webhooks.test_concurrency" name="test_concurrent_duplicate_delivery_id_is_deduplicated" time="0.029" /><testcase classname="tests.test_webhooks.test_concurrency" name="test_webhook_requests_overlap_in_time" time="0.050" /><testcase classname="tests.test_webhooks.test_concurrency" name="test_missing_event_header_returns_422" time="0.024" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_client_can_be_imported" time="0.017" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_error_has_status_code" time="0.000" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_get_readme_returns_none_on_404" time="0.000" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_comment_on_issue_signature" time="0.001" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_update_issue_signature" time="0.000" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_create_pull_request_signature" time="0.000" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_create_branch_signature" time="0.000" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_comment_on_issue_builds_correct_path" time="0.017" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_create_or_update_file_signature" time="0.000" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_create_or_update_file_builds_correct_path" time="0.017" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_put_method_exists" time="0.017" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_create_or_update_file_base64_encodes_content" time="0.018" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_create_or_update_file_without_sha" time="0.019" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_create_branch_builds_correct_path_and_body" time="0.019" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_create_pull_request_builds_correct_path_and_body" time="0.018" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_get_issues_paginates_past_pull_requests" time="0.018" /><testcase classname="tests.test_webhooks.test_github_client.TestGitHubClientInternals" name="test_file_content_limit_is_measured_in_bytes" time="0.018" /><testcase classname="tests.test_webhooks.test_handler" name="test_verify_signature_skipped_when_no_secret" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_verify_signature_fails_without_header" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_verify_signature_wrong_prefix" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_verify_signature_correct" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_verify_signature_wrong" time="0.000" /><testcase classname="tests.test_webhooks.test_handler" name="test_handle_bug_issue" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_handle_question_issue" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_handle_issue_ignores_non_opened" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_handle_issue_missing_repo" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_handle_issue_empty_body_gets_info_needed_boost" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_stores_event_in_memory" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_dispatch_issues_event" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_dispatch_unknown_event_returns_none" time="0.001" /><testcase classname="tests.test_webhooks.test_handler" name="test_record_creation" time="0.000" /><testcase classname="tests.test_webhooks.test_router" name="test_post_github_webhook_dev_mode" time="0.266" /><testcase classname="tests.test_webhooks.test_router" name="test_post_webhook_missing_event_header" time="0.023" /><testcase classname="tests.test_webhooks.test_router" name="test_post_webhook_invalid_json" time="0.027" /><testcase classname="tests.test_webhooks.test_router" name="test_post_webhook_unknown_event" time="0.024" /><testcase classname="tests.test_webhooks.test_router" name="test_post_webhook_correct_signature" time="0.216" /><testcase classname="tests.test_webhooks.test_router" name="test_post_webhook_wrong_signature" time="0.025" /><testcase classname="tests.test_webhooks.test_router" name="test_post_webhook_missing_signature_with_secret" time="0.023" /><testcase classname="tests.test_webhooks.test_router" name="test_post_webhook_non_opened_issue_with_secret" time="0.026" /><testcase classname="tests.test_webhooks.test_router" name="test_list_events_empty" time="0.023" /><testcase classname="tests.test_webhooks.test_router" name="test_list_events_after_receiving_issue" time="0.217" /><testcase classname="tests.test_webhooks.test_router" name="test_list_events_respects_limit" time="1.465" /><testcase classname="tests.test_webhooks.test_router" name="test_list_events_ignores_non_issues" time="0.024" /><testcase classname="tests.test_webhooks.test_router" name="test_list_events_non_opened_not_stored" time="0.031" /><testcase classname="tests.test_webhooks.test_router" name="test_get_event_detail_found" time="0.226" /><testcase classname="tests.test_webhooks.test_router" name="test_get_event_detail_not_found" time="0.023" /><testcase classname="tests.test_webhooks.test_router" name="test_get_event_detail_question_has_suggested_action" time="0.241" /><testcase classname="tests.test_webhooks.test_router" name="test_list_events_includes_title_and_labels" time="0.279" /><testcase classname="tests.test_webhooks.test_router" name="test_list_events_edited_still_excluded" time="0.030" /><testcase classname="tests.test_webhooks.test_router" name="test_webhook_config_never_returns_secret" time="0.021" /><testcase classname="tests.test_webhooks.test_router" name="test_events_can_be_filtered_and_marked_read" time="0.512" /><testcase classname="tests.test_webhooks.test_router" name="test_missing_delivery_header_still_gets_usable_event_id" time="0.254" /><testcase classname="tests.test_webhooks.test_router" name="test_approved_reply_is_posted_without_regeneration" time="0.280" /><testcase classname="tests.test_webhooks.test_router" name="test_fix_endpoint_returns_404_for_nonexistent_event" time="0.028" /><testcase classname="tests.test_webhooks.test_router" name="test_fix_endpoint_returns_400_for_no_classification" time="0.028" /><testcase classname="tests.test_webhooks.test_router" name="test_fix_endpoint_returns_502_when_llm_not_configured" time="0.030" /><testcase classname="tests.test_webhooks.test_router" name="test_fix_endpoint_ignores_non_bug_issues" time="0.027" /><testcase classname="tests.test_webhooks.test_router" name="test_event_list_recovers_persisted_rows_after_memory_is_cleared" time="0.314" /></testsuite></testsuites>

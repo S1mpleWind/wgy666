@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: issuescope-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: issuescope
+      POSTGRES_PASSWORD: issuescope
+      POSTGRES_DB: issuescope
+    ports:
+      - "5432:5432"
+    volumes:
+      - issuescope_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U issuescope -d issuescope"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  issuescope_pg_data:

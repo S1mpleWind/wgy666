@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "repository": {
+    "owner": "wgy2006",
+    "name": "wgy666"
+  },
+  "cases": [
+    {
+      "id": "what-01",
+      "category": "what",
+      "question": "这个项目解决什么问题，主要面向哪些用户？",
+      "expected_keyword_groups": [["GitHub"], ["Issue"], ["维护者", "开发者"]],
+      "expected_files": ["README.md"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "what-02",
+      "category": "what",
+      "question": "前端和后端分别采用了什么主要技术？",
+      "expected_keyword_groups": [["React"], ["TypeScript"], ["FastAPI"], ["Python"]],
+      "expected_files": ["frontend/package.json", "backend/pyproject.toml"],
+      "forbidden_terms": ["Vue", "Spring Boot"]
+    },
+    {
+      "id": "what-03",
+      "category": "what",
+      "question": "系统目前有哪些核心业务能力？",
+      "expected_keyword_groups": [["仓库同步", "同步仓库"], ["问答"], ["项目解析", "项目结构"], ["Issue"]],
+      "expected_files": ["README.md"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "what-04",
+      "category": "what",
+      "question": "项目使用了哪些持久化和向量检索技术？",
+      "expected_keyword_groups": [["PostgreSQL", "Postgres"], ["pgvector", "向量"], ["SQLAlchemy"]],
+      "expected_files": ["backend/app/storage/database.py", "backend/app/storage/postgres.py"],
+      "forbidden_terms": ["MongoDB"]
+    },
+    {
+      "id": "what-05",
+      "category": "what",
+      "question": "项目中知识图谱保存了哪些类型的仓库知识？",
+      "expected_keyword_groups": [["目录"], ["模块"], ["依赖"], ["测试"], ["源码", "源代码"]],
+      "expected_files": ["backend/app/services/knowledge_graph.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "where-01",
+      "category": "where",
+      "question": "FastAPI 应用入口和路由注册在哪里？",
+      "expected_keyword_groups": [["backend/app/main.py"], ["create_app"], ["include_router"]],
+      "expected_files": ["backend/app/main.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "where-02",
+      "category": "where",
+      "question": "GitHub 仓库同步的核心实现文件在哪里？",
+      "expected_keyword_groups": [["repository_sync.py"], ["RepositorySyncService"], ["sync"]],
+      "expected_files": ["backend/app/services/repository_sync.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "where-03",
+      "category": "where",
+      "question": "项目结构、依赖和入口文件的规则解析在哪里实现？",
+      "expected_keyword_groups": [["project_analysis.py"], ["ProjectAnalysisService"], ["依赖"], ["入口"]],
+      "expected_files": ["backend/app/services/project_analysis.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "where-04",
+      "category": "where",
+      "question": "仓库问答的 Agent 主循环在哪里？",
+      "expected_keyword_groups": [["assistant/harness.py", "harness.py"], ["AgentHarness"], ["tool", "工具"]],
+      "expected_files": ["backend/app/assistant/harness.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "where-05",
+      "category": "where",
+      "question": "GitHub Webhook 接收接口和事件处理逻辑分别在哪里？",
+      "expected_keyword_groups": [["webhooks/router.py"], ["webhooks/handler.py"], ["github_webhook"], ["dispatch_event"]],
+      "expected_files": ["backend/app/webhooks/router.py", "backend/app/webhooks/handler.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "where-06",
+      "category": "where",
+      "question": "前端仓库问答侧边栏在哪里实现？",
+      "expected_keyword_groups": [["ChatSidebar.tsx"], ["askAssistant"]],
+      "expected_files": ["frontend/src/components/ChatSidebar.tsx"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "where-07",
+      "category": "where",
+      "question": "数据库表结构和连接初始化代码在哪里？",
+      "expected_keyword_groups": [["storage/database.py", "database.py"], ["initialize_database"], ["engine", "数据库引擎"]],
+      "expected_files": ["backend/app/storage/database.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "how-01",
+      "category": "how",
+      "question": "从用户输入 GitHub URL 到仓库数据可查询，完整流程是什么？",
+      "expected_keyword_groups": [["URL"], ["GitHub API", "GitHub"], ["分类"], ["保存", "数据库"], ["知识图谱", "知识库"]],
+      "expected_files": ["backend/app/services/repository_sync.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "how-02",
+      "category": "how",
+      "question": "仓库问答为什么能够引用具体文件？",
+      "expected_keyword_groups": [["工具", "tool"], ["citation", "引用"], ["path", "文件路径"], ["知识", "检索"]],
+      "expected_files": ["backend/app/assistant/tools.py", "backend/app/assistant/harness.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "how-03",
+      "category": "how",
+      "question": "项目结构分析是使用大模型还是规则？具体如何判断项目类型？",
+      "expected_keyword_groups": [["规则"], ["非 AI", "不依赖大模型"], ["语言"], ["依赖", "框架"]],
+      "expected_files": ["backend/app/services/project_analysis.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "how-04",
+      "category": "how",
+      "question": "新 Issue 到达后，系统如何接收、分类并生成回复建议？",
+      "expected_keyword_groups": [["Webhook"], ["分类"], ["LLM", "大模型"], ["回复"]],
+      "expected_files": ["backend/app/webhooks/handler.py", "backend/app/webhooks/auto_reply.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "how-05",
+      "category": "how",
+      "question": "向量检索不可用时系统如何降级？",
+      "expected_keyword_groups": [["embedding", "向量"], ["降级", "fallback", "回退"], ["hash", "哈希", "本地"]],
+      "expected_files": ["backend/app/services/embeddings.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "how-06",
+      "category": "how",
+      "question": "FAQ 如何减少重复 Issue，匹配和命中如何处理？",
+      "expected_keyword_groups": [["FAQ"], ["匹配"], ["关键词", "相似度"], ["命中"]],
+      "expected_files": ["backend/app/services/faq_service.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "how-07",
+      "category": "how",
+      "question": "前端点击项目结构卡片后如何进入详细视图？",
+      "expected_keyword_groups": [["App.tsx"], ["ProjectStructureDetails"], ["状态", "视图"]],
+      "expected_files": ["frontend/src/App.tsx", "frontend/src/ProjectStructureDetails.tsx"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "issue-01",
+      "category": "issue",
+      "question": "系统支持把 Issue 分成哪些类别？",
+      "expected_keyword_groups": [["bug", "缺陷"], ["feature", "功能"], ["question", "问题"], ["duplicate", "重复"], ["信息不足", "info_needed"]],
+      "expected_files": ["backend/app/schemas/issue.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "issue-02",
+      "category": "issue",
+      "question": "Webhook 如何验证请求确实来自 GitHub？",
+      "expected_keyword_groups": [["HMAC", "签名"], ["SHA-256", "SHA256"], ["X-Hub-Signature-256"]],
+      "expected_files": ["backend/app/webhooks/handler.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "issue-03",
+      "category": "issue",
+      "question": "同一个 GitHub delivery 重复推送时如何避免重复记录？",
+      "expected_keyword_groups": [["delivery", "event_id"], ["去重", "重复"], ["覆盖", "同一键"]],
+      "expected_files": ["backend/app/webhooks/handler.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "issue-04",
+      "category": "issue",
+      "question": "自动修复 Issue 时为什么不能直接修改主分支？",
+      "expected_keyword_groups": [["分支"], ["Pull Request", "PR"], ["审核", "审查"], ["主分支"]],
+      "expected_files": ["backend/app/services/auto_fix.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "engineering-01",
+      "category": "engineering",
+      "question": "后端依赖如何安装，测试如何运行？",
+      "expected_keyword_groups": [["uv sync"], ["uv run pytest"], ["pyproject.toml"]],
+      "expected_files": ["backend/pyproject.toml"],
+      "forbidden_terms": ["pipenv"]
+    },
+    {
+      "id": "engineering-02",
+      "category": "engineering",
+      "question": "前端如何安装、启动和构建？",
+      "expected_keyword_groups": [["npm install", "npm ci"], ["npm run dev"], ["npm run build"]],
+      "expected_files": ["frontend/package.json"],
+      "forbidden_terms": ["yarn only"]
+    },
+    {
+      "id": "engineering-03",
+      "category": "engineering",
+      "question": "当前后端测试覆盖了哪些主要模块？",
+      "expected_keyword_groups": [["Webhook"], ["assistant", "问答"], ["services", "服务"], ["storage", "存储"]],
+      "expected_files": ["docs/test.md"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "engineering-04",
+      "category": "engineering",
+      "question": "哪些配置应通过环境变量提供，哪些敏感信息不能提交到 Git？",
+      "expected_keyword_groups": [["LLM_API_KEY"], ["GITHUB_TOKEN"], ["DATABASE_URL"], ["secret", "密钥"]],
+      "expected_files": ["backend/.env.example", "backend/app/core/config.py"],
+      "forbidden_terms": ["提交真实 key", "提交真实 token"]
+    },
+    {
+      "id": "engineering-05",
+      "category": "engineering",
+      "question": "系统如何支持多个仓库并避免每次问答都重新同步？",
+      "expected_keyword_groups": [["owner"], ["name"], ["缓存"], ["freshness", "cache_first"]],
+      "expected_files": ["backend/app/services/repository_query.py"],
+      "forbidden_terms": []
+    },
+    {
+      "id": "risk-01",
+      "category": "risk",
+      "question": "当前源码级问答可能受到哪些数据范围限制？",
+      "expected_keyword_groups": [["同步范围", "文件范围"], ["截断", "truncated"], ["索引"], ["上下文"]],
+      "expected_files": ["backend/app/services/repository_sync.py", "backend/app/services/knowledge_graph.py"],
+      "forbidden_terms": ["所有仓库都能百分之百完整分析"]
+    },
+    {
+      "id": "risk-02",
+      "category": "risk",
+      "question": "真实 LLM 问答测试为什么不适合直接作为每次提交都运行的单元测试？",
+      "expected_keyword_groups": [["网络"], ["API Key", "密钥"], ["费用", "额度"], ["不稳定", "可重复性"]],
+      "expected_files": ["backend/tests/test_assistant/test_router.py"],
+      "forbidden_terms": []
+    }
+  ]
+}

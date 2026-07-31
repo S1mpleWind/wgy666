@@ -1,0 +1,225 @@
+/* -- ProjectAnalysisPanel: mindmap + analysis cards ------------------------ */
+
+.analysis-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.analysis-layout > *,
+.analysis-grid > * {
+  min-width: 0;
+}
+
+.analysis-summary {
+  border: 1px solid #e5ebf0;
+  border-radius: 8px;
+  padding: 18px;
+  background: #fbfcfd;
+  border-color: var(--color-border);
+  background: var(--color-surface-subtle);
+}
+
+.analysis-kicker {
+  margin: 0 0 8px;
+  color: #6a747e;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.analysis-summary h4,
+.analysis-card h4 {
+  margin: 0;
+  color: #182027;
+}
+
+.analysis-summary h4 {
+  font-size: 22px;
+}
+
+.analysis-summary p:not(.analysis-kicker) {
+  color: #4b5563;
+  line-height: 1.7;
+  margin: 12px 0 0;
+}
+
+.analysis-summary .analysis-basis {
+  color: #6a747e;
+  font-size: 12px;
+}
+
+.analysis-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  border: 1px solid #f2c36b;
+  border-radius: 8px;
+  background: #fff9e8;
+  color: #795500;
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 10px 12px;
+}
+
+.analysis-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.analysis-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.analysis-chips span {
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #1555a0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 9px;
+}
+
+.mindmap {
+  min-height: 250px;
+  border: 1px solid #dbe5ee;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(31, 111, 235, 0.08) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(31, 111, 235, 0.08) 1px, transparent 1px),
+    #ffffff;
+  background-size: 36px 36px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: center;
+  padding: 18px;
+  background-color: var(--color-surface);
+  box-shadow: inset 0 0 0 1px rgba(35, 104, 217, 0.02);
+}
+
+.mindmap-center,
+.mindmap-node {
+  border-radius: 8px;
+  border: 1px solid #d9e0e6;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(21, 37, 54, 0.06);
+  color: inherit;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  box-shadow: var(--shadow-sm);
+}
+
+.mindmap-center:hover,
+.mindmap-node:hover,
+.analysis-card:hover {
+  border-color: #8db1dc;
+  box-shadow: 0 10px 24px rgba(21, 37, 54, 0.1);
+  transform: translateY(-1px);
+  border-color: #8fb1d8;
+  box-shadow: var(--shadow-md);
+}
+
+.mindmap-center {
+  grid-row: span 2;
+  min-height: 112px;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  padding: 14px;
+  width: 100%;
+}
+
+.mindmap-center strong {
+  color: #182027;
+  font-size: 18px;
+}
+
+.mindmap-center span,
+.mindmap-node span {
+  color: #6a747e;
+  font-size: 12px;
+}
+
+.mindmap-center small {
+  margin-top: 5px;
+  color: #1555a0;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mindmap-node {
+  min-height: 76px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px;
+  color: #1f6feb;
+  width: 100%;
+}
+
+.mindmap-node strong {
+  color: #182027;
+  font-size: 20px;
+}
+
+.analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.analysis-card {
+  border: 1px solid #e5ebf0;
+  border-radius: 8px;
+  padding: 14px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 150px;
+  background: #ffffff;
+  color: inherit;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  border-color: var(--color-border);
+}
+
+.analysis-card h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.analysis-card-arrow {
+  margin-left: auto;
+  color: #6a747e !important;
+}
+
+.analysis-card h4 svg {
+  color: #18794e;
+}
+
+.analysis-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #4b5563;
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.analysis-card li {
+  overflow-wrap: anywhere;
+}
