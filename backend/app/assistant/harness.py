@@ -8,7 +8,9 @@ them → feeds results back to LLM → repeats until LLM gives a final answer.
 """
 
 import json
+import logging
 from typing import Any
+from xml.etree import ElementTree
 
 from openai import APIError, AsyncOpenAI, BadRequestError, OpenAIError
 
@@ -20,6 +22,15 @@ from app.schemas.assistant import AssistantChatRequest, AssistantChatResponse
 from app.schemas.repository import RepositorySnapshot
 from app.services.repository_query import RepositoryQueryService
 from app.services.usage import tracked_chat_completion
+
+
+logger = logging.getLogger(__name__)
+
+DSML_TOOL_CALLS_OPEN = "<｜｜DSML｜｜tool_calls>"
+DSML_TOOL_CALLS_CLOSE = "</｜｜DSML｜｜tool_calls>"
+TOOL_LIMIT_MESSAGE = "已达到仓库工具调用上限，无法在本轮形成完整回答。请缩小问题范围后重试。"
+MAX_FINAL_EVIDENCE_CHARS = 24_000
+MAX_TOOL_EVIDENCE_CHARS = 4_000
 
 
 class AgentHarnessError(Exception):
@@ -118,23 +129,64 @@ class AgentHarness:
             assistant_message = completion.choices[0].message
             tool_calls = assistant_message.tool_calls or []
 
+            recovered_calls = []
+            contains_dsml = bool(
+                assistant_message.content
+                and self._contains_dsml_tool_calls(assistant_message.content)
+            )
+            if not tool_calls and contains_dsml:
+                recovered_calls = self._parse_dsml_tool_calls(assistant_message.content)
+
             # ── LLM answered directly (no tools needed) → done ──────
-            if not tool_calls:
+            if not tool_calls and not recovered_calls:
+                if contains_dsml:
+                    logger.error("Suppressing malformed DSML tool-call markup returned by the model.")
+                    return TOOL_LIMIT_MESSAGE, tool_results
                 return (assistant_message.content or ""), tool_results
 
             # ── Execute tools and feed results back ──────────────────
-            messages.append(assistant_message.model_dump(exclude_none=True))
+            calls_to_execute: list[tuple[str, str | dict[str, Any], str]] = []
+            if tool_calls:
+                messages.append(assistant_message.model_dump(exclude_none=True))
+                calls_to_execute = [
+                    (tool_call.function.name, tool_call.function.arguments, tool_call.id)
+                    for tool_call in tool_calls
+                ]
+            else:
+                logger.warning(
+                    "Recovered %d DSML tool call(s) from assistant message content in round %d.",
+                    len(recovered_calls),
+                    round_index + 1,
+                )
+                calls_to_execute = [
+                    (name, arguments, f"dsml_{round_index}_{call_index}")
+                    for call_index, (name, arguments) in enumerate(recovered_calls)
+                ]
+                messages.append({
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": call_id,
+                            "type": "function",
+                            "function": {
+                                "name": name,
+                                "arguments": json.dumps(arguments, ensure_ascii=False),
+                            },
+                        }
+                        for name, arguments, call_id in calls_to_execute
+                    ],
+                })
 
-            for tool_call in tool_calls:
+            for tool_name, tool_arguments, tool_call_id in calls_to_execute:
                 result = self.registry.execute(
-                    tool_call.function.name,
-                    tool_call.function.arguments,
+                    tool_name,
+                    tool_arguments,
                     snapshot,
                 )
                 tool_results.append(result)
                 messages.append({
                     "role": "tool",
-                    "tool_call_id": tool_call.id,
+                    "tool_call_id": tool_call_id,
                     "content": self._tool_result_content(result),
                 })
 
@@ -151,16 +203,47 @@ class AgentHarness:
                 })
 
         # ── Final LLM call after tool rounds exhausted ───────────────
+        final_messages = self._build_final_synthesis_messages(messages, tool_results)
         try:
             final = await tracked_chat_completion(
                 self.client,
                 model=self._cfg.llm_model,
-                messages=messages,
+                messages=final_messages,
             )
         except (APIError, OpenAIError) as exc:
             raise AgentHarnessError(f"LLM final-answer request failed: {exc}") from exc
 
-        return (final.choices[0].message.content or ""), tool_results
+        final_message = final.choices[0].message
+        final_content = final_message.content or ""
+        if not final_message.tool_calls and not self._contains_dsml_tool_calls(final_content):
+            return final_content, tool_results
+
+        logger.warning("Model attempted a tool call while final answer synthesis disabled tools; retrying once.")
+        retry_messages = [
+            *final_messages,
+            {
+                "role": "system",
+                "content": (
+                    "Return the final answer now. Do not call tools and do not output tool-call markup, "
+                    "XML, DSML, JSON instructions, or descriptions of intended future investigation."
+                ),
+            },
+        ]
+        try:
+            retry = await tracked_chat_completion(
+                self.client,
+                model=self._cfg.llm_model,
+                messages=retry_messages,
+            )
+        except (APIError, OpenAIError) as exc:
+            raise AgentHarnessError(f"LLM final-answer retry failed: {exc}") from exc
+
+        retry_message = retry.choices[0].message
+        retry_content = retry_message.content or ""
+        if retry_message.tool_calls or self._contains_dsml_tool_calls(retry_content):
+            logger.error("Model returned another tool call after final-answer retry; suppressing protocol text.")
+            return self._fallback_answer(tool_results), tool_results
+        return retry_content, tool_results
 
     # ── Internal helpers ─────────────────────────────────────────────
 
@@ -212,3 +295,97 @@ class AgentHarness:
             },
             ensure_ascii=False,
         )
+
+    def _contains_dsml_tool_calls(self, content: str) -> bool:
+        return DSML_TOOL_CALLS_OPEN in content
+
+    def _build_final_synthesis_messages(
+        self,
+        messages: list[dict[str, Any]],
+        tool_results: list[ToolResult],
+    ) -> list[dict[str, str]]:
+        question = next(
+            (
+                str(message.get("content") or "")
+                for message in reversed(messages)
+                if message.get("role") == "user"
+            ),
+            "请总结仓库分析结果。",
+        )
+        evidence_parts: list[str] = []
+        evidence_length = 0
+        for result in tool_results:
+            part = (
+                f"工具：{result.call.name}\n"
+                f"摘要：{result.call.summary}\n"
+                f"结果：\n{result.content[:MAX_TOOL_EVIDENCE_CHARS]}"
+            )
+            if evidence_length + len(part) > MAX_FINAL_EVIDENCE_CHARS:
+                break
+            evidence_parts.append(part)
+            evidence_length += len(part)
+        evidence = "\n\n---\n\n".join(evidence_parts) or "没有可用的工具结果。"
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "你是仓库分析助手。请直接用中文回答用户问题，并根据提供的现有证据形成完整正文。"
+                    "不要调用工具，不要输出 DSML、XML、JSON 工具指令，也不要描述接下来准备做什么。"
+                    "证据不完整时仍应给出基于现有信息的最佳总结。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"用户问题：\n{question}\n\n已有仓库证据：\n{evidence}",
+            },
+        ]
+
+    def _fallback_answer(self, tool_results: list[ToolResult]) -> str:
+        if not tool_results:
+            return TOOL_LIMIT_MESSAGE
+        sections = []
+        for result in tool_results[:8]:
+            content = result.content.strip()[:1200]
+            sections.append(f"### {result.call.name}\n\n{content or result.call.summary}")
+        return "已根据当前获取到的仓库信息整理如下：\n\n" + "\n\n".join(sections)
+
+    def _parse_dsml_tool_calls(self, content: str) -> list[tuple[str, dict[str, Any]]]:
+        """Recover DeepSeek DSML tool markup returned in message.content."""
+        start = content.find(DSML_TOOL_CALLS_OPEN)
+        if start < 0:
+            return []
+        end = content.find(DSML_TOOL_CALLS_CLOSE, start)
+        if end < 0:
+            return []
+        end += len(DSML_TOOL_CALLS_CLOSE)
+        normalized = (
+            content[start:end]
+            .replace("<｜｜DSML｜｜", "<")
+            .replace("</｜｜DSML｜｜", "</")
+        )
+        try:
+            root = ElementTree.fromstring(normalized)
+        except ElementTree.ParseError:
+            logger.warning("Could not parse DSML tool-call markup returned by the model.")
+            return []
+
+        recovered: list[tuple[str, dict[str, Any]]] = []
+        for invocation in root.findall("invoke"):
+            name = invocation.get("name")
+            if not name:
+                continue
+            arguments: dict[str, Any] = {}
+            for parameter in invocation.findall("parameter"):
+                parameter_name = parameter.get("name")
+                if not parameter_name:
+                    continue
+                raw_value = parameter.text or ""
+                if parameter.get("string", "").lower() == "true":
+                    arguments[parameter_name] = raw_value
+                    continue
+                try:
+                    arguments[parameter_name] = json.loads(raw_value)
+                except json.JSONDecodeError:
+                    arguments[parameter_name] = raw_value
+            recovered.append((name, arguments))
+        return recovered
