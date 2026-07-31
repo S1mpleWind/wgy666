@@ -62,7 +62,7 @@ class Settings(BaseSettings):
         description="Model name for assistant answer synthesis.",
     )
     llm_timeout_seconds: float = Field(default=60.0, validation_alias="LLM_TIMEOUT_SECONDS")
-    assistant_max_tool_rounds: int = Field(default=3, validation_alias="ASSISTANT_MAX_TOOL_ROUNDS")
+    assistant_max_tool_rounds: int = Field(default=6, validation_alias="ASSISTANT_MAX_TOOL_ROUNDS")
 
     # --- JWT / Authentication ---
     jwt_secret: str = Field(
